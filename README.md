@@ -1,2 +1,60 @@
-# executor-ai
-ai hackathon at berkeley 2026
+# ClearPath Estate
+
+> The AI that prevents executors from making expensive mistakes — by building a live
+> intelligence graph of the estate and running a true agent that alerts *before* probate
+> deadlines and liability triggers are missed.
+
+Built for the Hackathon @ Berkeley 2026 (24-hour build).
+
+## What it does
+Upload a will, deed, bank statement, or insurance policy. Claude parses each into a live
+estate-state graph. An estate-aware chat (text + voice) answers questions grounded in
+*your* documents. And a real agent — the **DeadlineAgent** — proactively reasons over
+California probate law and tells you the next action before a missed deadline costs you.
+
+## Architecture
+Polyglot, two services + shared Redis. Python is the brain, TypeScript is the experience,
+Redis is the memory.
+
+```
+web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Python)
+  dashboard · chat UI · voice                     documents · RAG chat · DeadlineAgent
+  Deepgram · Sentry                               Claude · embeddings · Arize Phoenix
+            └──────────────── Redis (KV state + vector search) ────────────────┘
+```
+
+## Stack
+- **agent/** — Python · FastAPI · Anthropic (`claude-opus-4-8`, `claude-sonnet-4-6`) ·
+  OpenAI embeddings · Pydantic · Arize Phoenix
+- **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
+- **shared** — Redis (Upstash / Redis Cloud): KV estate state + vector index
+
+## Repo layout
+- [`CLAUDE.md`](CLAUDE.md) — working instructions for Claude / coding agents
+- [`project_overview.md`](project_overview.md) — full design, data shapes, flows, demo
+- [`hackathon_tracks_and_prizes.md`](hackathon_tracks_and_prizes.md) — tracks & sponsors
+- [`team/`](team/) — per-member role briefs (Members 1–4)
+- `agent/` — Python service · `web/` — Next.js frontend
+
+## Getting started
+```bash
+# Python brain
+cd agent && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env            # fill in keys
+uvicorn main:app --reload --port 8000
+
+# Next.js experience
+cd web && npm install
+cp .env.local.example .env.local   # fill in keys, AGENT_API_URL=http://localhost:8000
+npm run dev
+```
+Then `POST /seed` on the agent to load the demo estate.
+
+## Team
+| Member | Owns | Brief |
+|--------|------|-------|
+| 1 (Alex) | Document Intelligence (Python) | [member1](team/member1-document-intelligence.md) |
+| 2 | Data & Contracts (Python + TS) | [member2](team/member2-data-layer.md) |
+| 3 | DeadlineAgent + Reasoning (Python) | [member3](team/member3-deadline-agent.md) |
+| 4 | Frontend + Voice (TS) | [member4](team/member4-frontend-chat-voice.md) |

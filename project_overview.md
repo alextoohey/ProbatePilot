@@ -1,271 +1,229 @@
 # ClearPath Estate — Project Overview
 
-## Project Overview
+## 1. The Product
 
-ClearPath Estate is an AI executor assistant that prevents executors from making expensive legal and financial mistakes during estate administration. The system parses estate documents into a live intelligence graph and proactively alerts the executor before deadline violations and liability triggers occur — not after.
+ClearPath Estate is an AI executor assistant that prevents executors from making
+expensive legal and financial mistakes during estate administration. It parses estate
+documents into a live intelligence graph and proactively alerts the executor *before*
+deadline violations and liability triggers occur — not after.
 
-The core product insight: most AI products answer questions. ClearPath tells users what they don't know to ask, before it costs them.
+The core insight: most AI products answer questions. ClearPath tells the executor what
+they **don't know to ask**, before it costs them.
 
-### One-Sentence Pitch
+### One-sentence pitch
+> "The AI that prevents executors from making expensive mistakes — by building a live
+> intelligence graph of the estate and running a true agent that alerts before problems
+> happen."
 
-> "The AI that prevents executors from making expensive mistakes — by building a live intelligence graph of the estate and alerting before problems happen."
-
-### The Three Capabilities (in build priority order)
-
-1. **Document Intelligence** — Upload a will, deed, bank statement, or insurance policy. Claude parses it into structured JSON (beneficiaries, assets, debts, dates, special instructions). Extracted chunks are embedded into Redis Iris for semantic search. Key facts are written to Redis KV as a living estate state graph.
-
-2. **Estate-Aware Chat + Voice** — Every chat query triggers a Redis vector search, retrieving relevant document chunks injected into Claude's context. Answers are grounded in this specific estate's documents, not generic probate advice. Voice interface via Deepgram STT/TTS for hands-free use during phone calls with institutions.
-
-3. **DeadlineAgent (the core differentiator)** — A background rules engine that reads estate state, compares it against California probate statutes and liability triggers, and fires proactive alerts ranked by urgency and consequence. Runs on a scheduled trigger. Does not wait for the executor to ask.
-
----
-
-## Tech Stack
-
-### AI & LLM
-
-- **Anthropic Claude** (`claude-sonnet-4-6`) — Primary reasoning engine for document parsing, RAG-based chat, rules reasoning in DeadlineAgent, and letter/document generation
-  - Use structured output / JSON mode for document extraction
-  - Use streaming for chat responses
-  - Vision capability for PDF and image document parsing
-  - SDK: `@anthropic-ai/sdk`
-
-- **OpenAI Embeddings** (`text-embedding-3-small`) — Generate vector embeddings for document chunks stored in Redis Iris
-  - SDK: `openai`
-
-### Memory & Vector Store
-
-- **Redis** (via Upstash or Redis Cloud)
-  - **Redis Iris** — Vector index for semantic search over embedded estate document chunks
-  - **Redis KV** — Estate state graph (assets, debts, beneficiaries, deadlines, tasks) and conversation session memory
-  - SDK: `ioredis` or `@upstash/redis`
-  - Vector search: `@upstash/vector` or `redis` with vector commands
-
-### Voice
-
-- **Deepgram** — Speech-to-text (STT) and text-to-speech (TTS)
-  - STT: Real-time transcription of executor voice input
-  - TTS: Reading Claude responses aloud during phone call scripts
-  - SDK: `@deepgram/sdk`
-
-### Observability
-
-- **Sentry** — Distributed tracing and error monitoring for every agent action
-  - Wrap every Claude call, every DeadlineAgent run, and every document extraction in Sentry transactions
-  - Custom tags: `estate_id`, `action_type`, `rule_checked`, `agent_name`
-  - SDK: `@sentry/nextjs`
-
-### Frontend
-
-- **Next.js 14** (App Router) — Primary web application
-- **TypeScript** — All source files
-- **Tailwind CSS** — Styling
-- **Vercel AI SDK** (`ai`) — Streaming chat UI components and Claude integration helpers
-
-### Document Processing
-
-- **pdf-parse** — Extract text from uploaded PDF documents
-- **sharp** — Image preprocessing before sending to Claude Vision
-- **formidable** — Handle multipart file uploads in Next.js API routes
-
-### Backend / API
-
-- **Next.js API Routes** — All server-side logic including document parsing, chat, DeadlineAgent, and letter generation endpoints
-- **Zod** — Runtime validation of Claude structured output and API request/response schemas
-
-### Scheduling (DeadlineAgent)
-
-- **Vercel Cron Jobs** — Trigger DeadlineAgent on a schedule (every hour during demo, configurable)
-  - Or: `node-cron` if running a standalone Node server
-
-### Utilities
-
-- **date-fns** — Date arithmetic for deadline calculations (days from appointment date, statutory windows)
-- **nanoid** — Generate estate IDs and session IDs
-- **dotenv** — Environment variable management locally
+### The three capabilities (in build-priority order)
+1. **Document Intelligence** — Upload a will, deed, bank statement, or insurance policy.
+   Claude parses it into structured data (beneficiaries, assets, debts, dates, special
+   instructions). Chunks are embedded and stored in Redis for semantic search; key facts
+   are merged into a living estate-state graph in Redis KV.
+2. **Estate-Aware Chat + Voice** — Every query runs a Redis vector search; retrieved
+   chunks are injected into Claude's context. Answers are grounded in *this* estate's
+   documents, not generic probate advice. Voice (Deepgram STT/TTS) makes it usable
+   hands-free during phone calls with banks and institutions.
+3. **DeadlineAgent (the moat)** — A genuine agent: it reads estate state, reasons over
+   California probate statutes and liability triggers using Claude tool-use, and fires
+   alerts ranked by urgency and consequence. It runs on demand and after every document
+   upload. It does not wait to be asked.
 
 ---
 
-## Project Structure
+## 2. Why This Stack (and Why Polyglot)
+
+The previous plan was 100% TypeScript, including the agent. That was the wrong tool for
+the agent and document-reasoning work, and it left a lot of sponsor value on the table.
+This plan splits the system along its natural seam:
+
+| Concern | Language | Why |
+|---------|----------|-----|
+| Document parsing, embeddings, the agent loop, RAG | **Python** | The richest ecosystem for LLM agents, structured extraction, and tracing/eval. Pydantic gives airtight Claude-output validation. Arize Phoenix (the eval/observability sponsor) is Python-native. |
+| Dashboard, chat UI, voice, presentation | **TypeScript / Next.js** | Best-in-class UI velocity, first-class Deepgram + Sentry SDKs, trivial SSE streaming to the browser. |
+| Shared estate state + vectors | **Redis** | One source of truth both services read/write. Vector search + KV in one store ⇒ the Redis sponsor story is real, not "caching." |
+
+The seam is clean: **Python is the brain, TypeScript is the experience, Redis is the
+memory.** Each team member works mostly in one language.
+
+### AI / LLM (Python `agent/`)
+- **Anthropic Python SDK** (`anthropic`)
+  - `claude-opus-4-8` — the DeadlineAgent's reasoning and the RAG chat. This is the
+    "hard reasoning on a meaningful human problem" that the Anthropic prize rewards.
+    Use **adaptive thinking** for the agent's multi-step deadline/liability analysis.
+  - `claude-sonnet-4-6` — document parsing (vision + structured output) and letter
+    drafting. Cheaper and fast for the higher-volume, lower-novelty calls.
+  - **Structured extraction** via `messages.parse()` with Pydantic models — Claude output
+    is validated into typed objects, never hand-parsed JSON.
+  - **Vision / PDF** via document/image content blocks for scanned wills and statements.
+  - **Prompt caching** on the (large, stable) estate-state system prompt so repeated chat
+    turns and agent runs are cheap and fast.
+  - **Tool-use loop** for the DeadlineAgent — Claude calls typed rule-evaluation tools and
+    iterates until it has a complete, ranked alert set.
+- **OpenAI embeddings** (`text-embedding-3-small`) for document chunks.
+
+### Memory & vector store
+- **Redis** (Upstash for serverless, or Redis Cloud for the sponsor credits). KV holds
+  `estate:{id}`; a vector index holds embedded document chunks filtered by `estateId`.
+  This is **agent memory + retrieval**, which is exactly what the Redis prize asks for.
+
+### Voice (TypeScript `web/`)
+- **Deepgram** STT (executor speaks a question hands-free) and TTS (Claude's call-script
+  is read aloud while the executor is on the phone with a bank). Voice is essential to the
+  use case, not bolted on.
+
+### Observability (two complementary layers)
+- **Arize Phoenix** traces the Python agent: every Claude call and the full DeadlineAgent
+  loop become spans with token counts, latency, and `estate_id` / `action_type`
+  attributes. It is the natural eval surface for the agent and satisfies the Arize prize.
+- **Sentry** instruments the Next.js layer (the proxy, voice routes, UI errors) and is the
+  team-and-reliability story the Sentry prize rewards.
+
+### Frontend (TypeScript `web/`)
+- Next.js 14 App Router, TypeScript, Tailwind CSS. Streams chat from the Python service
+  over SSE; talks to the agent only through a thin, typed, Sentry-wrapped client.
+
+### Validation
+- **Pydantic v2** in Python is the source of truth for every shape. **Zod + TS types** in
+  `web/` mirror it for anything that crosses the wire. Member 2 owns the parity.
+
+---
+
+## 3. Target Tracks & Sponsors
+
+### Main track
+- **Ddoski's World (social impact).** Estate administration is a systemic-inequity
+  problem: families without money for a probate attorney spend ~180 hours and make costly
+  mistakes nobody warned them about. ClearPath gives them an expert in their corner. This
+  is also squarely the Anthropic theme of "economic opportunity / shifting what's possible
+  for people."
+
+### Sponsor tracks we build *into the core* (focused, winnable)
+| Sponsor | Prize | What must be true at demo |
+|---------|-------|---------------------------|
+| **Anthropic** | $5k API credits + office hours | Built with Claude; a true agent (DeadlineAgent) doing hard, proactive reasoning on a meaningful human problem. |
+| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. Vector search filtered per `estateId`; KV holds the live state graph. |
+| **Deepgram** | Nintendo Switch 2 / member | STT + TTS demonstrably essential — the executor uses voice during a simulated bank phone call. |
+| **Sentry** | Nintendo Switch 2 / member | Observability on the web layer + a team that course-corrects under pressure. ~30 min of setup. |
+| **Arize** | $1k | Phoenix tracing on the Python agent that *visibly improves the app* (catches a bad extraction / slow tool call during the build). |
+
+### Deliberately out of scope (roadmap, not the hackathon)
+- **Browserbase** (web-automation agent that looks up county-assessor property values),
+  **Fetch.ai** (uAgents marketplace listing), **Orkes/Band** (multi-agent orchestration).
+  All are real extensions of the agent, all add architectural risk a 24-hour demo won't
+  reward. Mention them as the roadmap; do not build them.
+
+---
+
+## 4. Repository Structure
 
 ```
 clearpath-estate/
-├── CLAUDE.md                        # This file
-├── .env.local                       # API keys (never commit)
-├── .env.example                     # Template for env vars
-├── next.config.ts
-├── tailwind.config.ts
-├── tsconfig.json
-├── package.json
+├── CLAUDE.md
+├── project_overview.md
+├── hackathon_tracks_and_prizes.md
+├── README.md
+├── team/
+│   ├── member1-document-intelligence.md
+│   ├── member2-data-layer.md
+│   ├── member3-deadline-agent.md
+│   └── member4-frontend-chat-voice.md
 │
-├── app/
-│   ├── layout.tsx
-│   ├── page.tsx                     # Dashboard — estate overview, alerts, tasks
-│   ├── chat/
-│   │   └── page.tsx                 # Estate-aware chat interface
-│   ├── upload/
-│   │   └── page.tsx                 # Document upload UI
-│   └── api/
-│       ├── parse-document/
-│       │   └── route.ts             # POST: upload doc → Claude extracts → Redis stores
-│       ├── chat/
-│       │   └── route.ts             # POST: message → Redis RAG → Claude → stream response
-│       ├── voice/
-│       │   ├── transcribe/
-│       │   │   └── route.ts         # POST: audio blob → Deepgram STT → text
-│       │   └── speak/
-│       │       └── route.ts         # POST: text → Deepgram TTS → audio stream
-│       ├── deadline-agent/
-│       │   └── route.ts             # GET: run rules engine against estate state → alerts
-│       ├── generate-letter/
-│       │   └── route.ts             # POST: letter type + estate state → Claude → draft
-│       └── cron/
-│           └── deadline-check/
-│               └── route.ts         # Vercel cron endpoint — triggers DeadlineAgent
-│
-├── lib/
-│   ├── claude.ts                    # Anthropic client + helper functions
-│   ├── redis.ts                     # Redis client (vector + KV)
-│   ├── deepgram.ts                  # Deepgram client + STT/TTS helpers
-│   ├── sentry.ts                    # Sentry transaction wrappers
-│   ├── embeddings.ts                # OpenAI embedding generation
-│   │
+├── agent/                          # Python FastAPI service — the brain
+│   ├── main.py                     # FastAPI app + route wiring
+│   ├── llm/
+│   │   ├── claude.py               # Anthropic client + extract/stream/agent helpers
+│   │   └── embeddings.py           # OpenAI embedding calls
+│   ├── store/
+│   │   └── redis_client.py         # Redis KV + vector helpers
+│   ├── schemas/                    # Pydantic models (estate, alerts, extractions)
+│   ├── documents/                  # Per-doc-type parsers + router
 │   ├── agents/
-│   │   └── deadline-agent.ts        # Rules engine — reads estate state, fires alerts
-│   │
-│   ├── parsers/
-│   │   ├── will-parser.ts           # Claude prompt + schema for will extraction
-│   │   ├── bank-statement-parser.ts # Claude prompt + schema for bank statement extraction
-│   │   ├── deed-parser.ts           # Claude prompt + schema for deed extraction
-│   │   └── document-router.ts      # Detect document type → route to right parser
-│   │
+│   │   └── deadline_agent.py       # The tool-use agent loop
 │   ├── rules/
-│   │   └── california-probate.ts    # Hardcoded CA probate rules, deadlines, liability triggers
-│   │
-│   ├── prompts/
-│   │   ├── system-prompt.ts         # Base estate-aware system prompt with state injection
-│   │   ├── extraction-prompts.ts    # Per-document-type extraction prompts
-│   │   └── letter-prompts.ts        # Letter generation prompts (creditor, bank, IRS, etc.)
-│   │
-│   └── schemas/
-│       ├── estate-state.ts          # Zod schema for the full estate state object
-│       ├── document-extractions.ts  # Zod schemas per document type
-│       └── alerts.ts                # Zod schema for DeadlineAgent alert objects
+│   │   └── california_probate.py   # Hardcoded CA probate ruleset
+│   ├── prompts/                    # System prompt, extraction, letter prompts
+│   ├── observability/
+│   │   └── phoenix.py              # Arize Phoenix / OpenInference setup
+│   └── seed/
+│       └── demo_estate.py          # DEMO_ESTATE + reset
 │
-├── components/
-│   ├── EstateOverview.tsx           # Summary stats — assets, debts, deadline countdown
-│   ├── AlertBanner.tsx              # Proactive DeadlineAgent alerts (the hero feature)
-│   ├── ChatInterface.tsx            # Streaming chat with voice toggle
-│   ├── DocumentUpload.tsx           # Drag-and-drop upload with parsing status
-│   ├── TaskList.tsx                 # Phase-gated task checklist
-│   ├── LetterPreview.tsx            # Generated letter with approve/edit/copy
-│   └── VoiceButton.tsx              # Hold-to-speak Deepgram integration
-│
-└── types/
-    ├── estate.ts                    # TypeScript types for estate state, assets, debts
-    ├── alerts.ts                    # Alert severity, type, and content types
-    └── documents.ts                 # Document type unions and extraction output types
+└── web/                            # Next.js frontend — the experience
+    ├── app/
+    │   ├── page.tsx                # Dashboard: overview + alerts + tasks
+    │   ├── chat/page.tsx           # Estate-aware chat
+    │   ├── upload/page.tsx         # Document upload
+    │   └── api/
+    │       ├── agent/[...path]/route.ts   # Sentry-wrapped proxy to Python
+    │       └── voice/
+    │           ├── transcribe/route.ts
+    │           └── speak/route.ts
+    ├── components/                 # Dashboard, AlertBanner, Chat, Voice, Upload, Letter
+    ├── lib/                        # agentClient, deepgram, sentry, schemas (Zod)
+    └── types/                      # TS types mirroring the Pydantic contract
 ```
 
 ---
 
-## Environment Variables
+## 5. Core Data Shapes
 
-```bash
-# .env.local — never commit this file
+Defined as **Pydantic models** in `agent/schemas/`, mirrored as **TS types + Zod** in
+`web/`. Field names are camelCase on the wire so both sides agree.
 
-# Anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-
-# OpenAI (embeddings only)
-OPENAI_API_KEY=sk-...
-
-# Redis (Upstash recommended for serverless)
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
-UPSTASH_VECTOR_REST_URL=https://...
-UPSTASH_VECTOR_REST_TOKEN=...
-
-# Deepgram
-DEEPGRAM_API_KEY=...
-
-# Sentry
-SENTRY_DSN=https://...
-NEXT_PUBLIC_SENTRY_DSN=https://...
-SENTRY_ORG=...
-SENTRY_PROJECT=...
-
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-CRON_SECRET=...   # Secret to validate Vercel cron requests
+### EstateState — Redis KV key `estate:{id}`
 ```
+id: str
+deceasedName: str
+dateOfDeath: str            # ISO date
+appointmentDate: str        # ISO date — letters testamentary issued
+state: "california"
+executor: { name: str, email: str }
+assets: Asset[]
+debts: Debt[]
+beneficiaries: Beneficiary[]
+documents: UploadedDocument[]
+tasks: Task[]
+alerts: Alert[]
+phase: 1 | 2 | 3 | 4 | 5 | 6
+createdAt: str
+updatedAt: str
+```
+
+### Asset / Debt / Beneficiary
+```
+Asset:        id, type(real_estate|bank_account|retirement|vehicle|personal_property|
+              other), description, estimatedValue?, appraised: bool, appraisedValue?,
+              beneficiaryNamed?
+Debt:         id, creditor, amount, type(secured|unsecured|priority),
+              notified: bool, notifiedDate?, claimFiled?
+Beneficiary:  id, name, share?, specificBequest?, contactInfo?
+```
+
+### Alert — output of the DeadlineAgent
+```
+id: str
+severity: critical | warning | info
+type: deadline | liability | missing_doc | rule_violation
+title: str                  # "DE-160 filing due in 9 days"
+body: str                   # full explanation with the consequence
+rule: str                   # the specific statute / rule triggered
+daysRemaining?: int
+actionRequired: str         # the single next action
+createdAt: str
+dismissed: bool
+```
+
+### Document extraction (Claude output, one per doc type)
+Each parser returns a typed extraction (e.g. `WillExtraction`, `BankStatementExtraction`,
+`DeedExtraction`) carrying the structured facts plus `rawChunks: str[]` — 3–5 sentence
+segments meant for embedding. Member 1 and Member 2 agree these shapes together.
 
 ---
 
-## Key Data Schemas
+## 6. California Probate Rules Database
 
-### Estate State (Redis KV — key: `estate:{id}`)
-
-```typescript
-interface EstateState {
-  id: string
-  deceasedName: string
-  dateOfDeath: string           // ISO date
-  appointmentDate: string       // Date letters testamentary issued
-  state: "california"           // Jurisdiction — CA rules hardcoded for hackathon
-  executor: {
-    name: string
-    email: string
-  }
-  assets: Asset[]
-  debts: Debt[]
-  beneficiaries: Beneficiary[]
-  documents: UploadedDocument[]
-  tasks: Task[]
-  alerts: Alert[]
-  phase: 1 | 2 | 3 | 4 | 5 | 6
-  createdAt: string
-  updatedAt: string
-}
-```
-
-### Alert (output of DeadlineAgent)
-
-```typescript
-interface Alert {
-  id: string
-  severity: "critical" | "warning" | "info"
-  type: "deadline" | "liability" | "missing_doc" | "rule_violation"
-  title: string                 // Short: "DE-160 filing due in 9 days"
-  body: string                  // Full explanation with consequence
-  rule: string                  // The specific statute or rule triggered
-  daysRemaining?: number        // For deadline alerts
-  actionRequired: string        // The single next action to take
-  createdAt: string
-  dismissed: boolean
-}
-```
-
-### Document Extraction (output of Claude parsers)
-
-```typescript
-interface WillExtraction {
-  documentType: "will"
-  executorName: string
-  beneficiaries: { name: string; share?: string; specificBequest?: string }[]
-  assets: { description: string; estimatedValue?: number }[]
-  trustClauses: string[]
-  specialInstructions: string[]
-  codicils: string[]
-  rawChunks: string[]           // For Redis vector embedding
-}
-```
-
----
-
-## California Probate Rules Database
-
-The DeadlineAgent compares estate state against these hardcoded rules (in `lib/rules/california-probate.ts`). This is the minimum viable ruleset for the hackathon:
+The DeadlineAgent reasons against these hardcoded rules (`agent/rules/california_probate.py`).
+This is the minimum viable ruleset for the hackathon.
 
 | Rule | Trigger | Deadline | Consequence |
 |------|---------|----------|-------------|
@@ -278,229 +236,155 @@ The DeadlineAgent compares estate state against these hardcoded rules (in `lib/r
 | Estate EIN (IRS SS-4) | Before any banking | ASAP | Cannot open estate bank account |
 | Final 1040 (personal) | Date of death | April 15 following year | IRS penalties |
 | Form 1041 (estate income) | If estate earns >$600 | April 15 following year | Penalties — most executors miss this |
-| Debt payment order | Before any distribution | N/A — sequential | Paying out of order = personal liability |
+| Debt payment order | Before any distribution | Sequential | Out-of-order = personal liability |
 | Property appraisal needed | Before DE-160 | Before 4-month deadline | Blocks inventory filing |
 
 ---
 
-## Core AI Flows
+## 7. Core AI Flows
 
-### 1. Document Parse Flow
-
+### Document parse (Python `agent/`)
 ```
-User uploads file (PDF / image)
-  → formidable extracts file buffer
-  → pdf-parse or sharp preprocesses
-  → document-router.ts detects document type
-  → correct parser prompt sent to Claude (vision + structured output)
-  → Zod validates extraction JSON
-  → Sentry transaction: { action: "document_parse", doc_type }
-  → raw chunks embedded via OpenAI text-embedding-3-small
-  → embeddings upserted to Redis Iris vector index
-  → structured data merged into estate state in Redis KV
-  → DeadlineAgent triggered to re-evaluate new state
-  → alerts returned to UI
+Upload (PDF / image)
+  → extract text (pypdf/pdfplumber) or pass image/PDF blocks to Claude vision
+  → router detects document type
+  → Sonnet 4.6 structured extraction → validated into a Pydantic model
+  → Phoenix span { action: document_parse, doc_type }
+  → embed rawChunks (OpenAI) → upsert to Redis vector index (filter: estateId)
+  → merge structured facts into estate state (Redis KV)
+  → trigger DeadlineAgent to re-evaluate
+  → return { extraction, alerts }
 ```
 
-### 2. Chat RAG Flow
-
+### Chat RAG (Python `agent/`, streamed to `web/`)
 ```
-User sends message (text or Deepgram STT transcription)
-  → embed query with text-embedding-3-small
-  → Redis Iris vector search → top 5 relevant document chunks
-  → load estate state JSON from Redis KV
-  → build Claude system prompt:
-      [base system prompt]
-      [estate state JSON]
-      [retrieved document chunks]
-  → stream Claude response
-  → if voice mode: pipe text to Deepgram TTS → stream audio
-  → Sentry transaction: { action: "chat_query" }
-```
-
-### 3. DeadlineAgent Flow
-
-```
-Triggered by: Vercel cron (hourly) OR after every document parse
+Message (typed, or Deepgram transcription)
+  → embed query → Redis vector search (top-k, filter estateId)
   → load estate state from Redis KV
-  → run california-probate.ts rules against state
-  → for each rule:
-      calculate days_remaining (using date-fns)
-      evaluate severity threshold
-      check if alert already exists (deduplicate)
-  → generate new alerts array ranked by severity
-  → write updated alerts back to Redis KV
-  → Sentry transaction: { action: "deadline_agent_run", rules_checked, alerts_fired }
-  → return alerts to caller
+  → build cached system prompt: [base] + [estate state] + [retrieved chunks]
+  → Opus 4.8 stream → SSE to the browser
+  → if voice mode: web/ pipes text to Deepgram TTS
+  → Phoenix span { action: chat_query }
 ```
 
-### 4. Letter Generation Flow
-
+### DeadlineAgent (Python `agent/` — the moat)
 ```
-User requests letter type (e.g. "Wells Fargo estate notification")
-  → load estate state from Redis KV
-  → select letter prompt from lib/prompts/letter-prompts.ts
-  → inject estate-specific variables (deceased name, dates, account refs, case numbers)
-  → Claude generates formatted letter
-  → return draft to LetterPreview component for review
-  → Sentry transaction: { action: "letter_generation", letter_type }
+Triggered on demand or after every parse
+  → load estate state
+  → Claude tool-use loop (Opus 4.8, adaptive thinking):
+       Claude calls typed rule-evaluation tools over california_probate rules,
+       computes days_remaining (dateutil), decides severity, dedupes,
+       and reasons about cross-rule consequences (e.g. appraisal blocks DE-160)
+  → produce ranked Alert[] (critical first)
+  → write alerts back to Redis KV
+  → Phoenix span { action: deadline_agent_run, rules_checked, alerts_fired }
+  → return alerts
+```
+
+### Letter generation (Python `agent/`)
+```
+Letter type (e.g. "Wells Fargo estate notification")
+  → load estate state → select letter prompt → inject estate-specific variables
+  → Sonnet 4.6 drafts a formatted, sign-ready letter
+  → Phoenix span { action: letter_generation, letter_type }
+  → return draft to LetterPreview in web/
 ```
 
 ---
 
-## System Prompt Template
+## 8. System Prompt Template
 
-The base system prompt injected into every Claude chat call (in `lib/prompts/system-prompt.ts`):
+The base system prompt for chat (`agent/prompts/`), assembled per request and prompt-cached
+on the stable prefix:
 
 ```
-You are an estate administration assistant helping an executor manage the estate 
-of {deceasedName}, who passed away on {dateOfDeath}. The executor is {executorName}.
+You are an estate administration assistant helping an executor manage the estate of
+{deceasedName}, who passed away on {dateOfDeath}. The executor is {executorName}.
 
-This estate is in {state}. Letters testamentary were issued on {appointmentDate}, 
+This estate is in California. Letters testamentary were issued on {appointmentDate},
 meaning the executor has had legal authority since that date.
 
 ESTATE STATE:
 {estateStateJSON}
 
 RETRIEVED DOCUMENT CONTEXT:
-{redisRetrievedChunks}
+{retrievedChunks}
 
 RULES YOU MUST FOLLOW:
-- Answer using specific facts from the estate state and documents above, not generic probate advice
-- When citing a deadline, always include the exact date and consequence of missing it
-- When you don't have a fact (e.g. a missing account number), say so explicitly
-- Never give legal advice. For questions requiring attorney judgment, say: 
+- Answer from the estate state and documents above, not generic probate advice.
+- When citing a deadline, always include the exact date and the consequence of missing it.
+- If you don't have a fact (e.g. a missing account number), say so explicitly.
+- Never give legal advice. For attorney-judgment questions, say:
   "This requires your attorney's input — it involves [reason]."
 - Keep tone warm and direct. This person is grieving. Never be clinical.
-- If stress or overwhelm is detectable, surface only the single most urgent next action.
+- If overwhelm is detectable, surface only the single most urgent next action.
 - Always answer in plain English. Define any legal term you use.
 ```
 
 ---
 
-## Demo Scenario (Hardcoded Seed Data)
+## 9. Demo Scenario
 
-For the hackathon demo, seed the following fictional estate to ensure a reliable, emotionally resonant presentation:
+Seed this fictional estate for a reliable, emotionally resonant demo.
 
-```typescript
-const DEMO_ESTATE: EstateState = {
-  id: "demo-milligan",
-  deceasedName: "Robert A. Milligan",
-  dateOfDeath: "2026-06-03",
-  appointmentDate: "2026-06-10",
-  state: "california",
-  executor: { name: "Dana Milligan", email: "dana@demo.com" },
-  assets: [
-    { type: "real_estate", description: "1847 Marin Ave, Berkeley CA", estimatedValue: 220000, appraised: false },
-    { type: "bank_account", description: "Wells Fargo checking ending 4412", value: 38240 },
-    { type: "retirement", description: "Fidelity IRA ending 7731", value: 26500, beneficiaryNamed: true },
-    { type: "vehicle", description: "2019 Honda Civic", estimatedValue: 12000, appraised: false }
-  ],
-  debts: [
-    { creditor: "UCSF Medical Center", amount: 4200, type: "unsecured", notified: false },
-    { creditor: "Chase Visa", amount: 3100, type: "unsecured", notified: false },
-    { creditor: "First Republic Mortgage", amount: 141000, type: "secured", notified: false }
-  ],
-  beneficiaries: [
-    { name: "Dana Milligan", share: "40%" },
-    { name: "Sarah Milligan", share: "40%" },
-    { name: "Marcus Milligan", share: "20%" }
-  ],
-  phase: 2,
-  // appointmentDate was June 10 → DE-160 due October 10 → ~9 days from demo date
-}
+```
+DEMO_ESTATE  (id: demo-milligan)
+  deceasedName:    Robert A. Milligan
+  dateOfDeath:     2026-06-03
+  appointmentDate: 2026-06-10
+  state:           california
+  executor:        Dana Milligan <dana@demo.com>
+
+  assets:
+    real_estate    1847 Marin Ave, Berkeley CA   ~$220,000   appraised: false
+    bank_account   Wells Fargo checking …4412     $38,240
+    retirement     Fidelity IRA …7731             $26,500    beneficiaryNamed: true
+    vehicle        2019 Honda Civic               ~$12,000    appraised: false
+
+  debts:
+    UCSF Medical Center     $4,200    unsecured   notified: false
+    Chase Visa              $3,100    unsecured   notified: false
+    First Republic Mortgage $141,000  secured     notified: false
+
+  beneficiaries:
+    Dana Milligan 40% · Sarah Milligan 40% · Marcus Milligan 20%
+
+  phase: 2
 ```
 
-This seed data is designed to trigger two critical DeadlineAgent alerts live during the demo:
-1. DE-160 filing due in ~9 days, no property appraisal uploaded
-2. Creditors not yet notified — 30-day window from appointment date nearly elapsed
+Designed to fire two CRITICAL alerts live:
+1. DE-160 Inventory & Appraisal due ~9 days out, no property appraisal uploaded.
+2. Creditors not yet notified — the 30-day window from June 10 nearly elapsed.
+
+A `POST /seed` endpoint resets this to a known-good state between demo runs.
 
 ---
 
-## Hackathon Build Order
+## 10. Hackathon Build Order
 
 | Hours | What to build | Why first |
-|-------|--------------|-----------|
-| 0–2 | Claude document extraction (hardcoded text input) | Foundation everything else runs on |
-| 2–5 | Redis Iris vector store + KV estate state | Enables RAG and DeadlineAgent |
-| 5–9 | Estate-aware chat with RAG | First demo-worthy moment |
-| 9–14 | DeadlineAgent rules engine | The actual product moat |
-| 14–17 | Deepgram voice (STT + TTS) | Emotional demo hook, wins track |
-| 17–18 | Sentry instrumentation | 30 min, wins Nintendo Switches |
-| 18–22 | Letter generation + dashboard UI | Visual polish, completes story |
-| 22–48 | File upload, edge cases, demo prep, sleep | Ship something that works reliably |
+|-------|---------------|-----------|
+| 0–1 | Repo skeleton: `agent/` FastAPI + `web/` Next.js + Redis connectivity | Both services must boot and reach Redis |
+| 0–2 | Contracts: Pydantic models + mirrored TS/Zod types + seed data | Everyone codes against the same shapes |
+| 1–5 | Claude document extraction → embed → Redis (Python) | Foundation everything runs on |
+| 2–5 | Redis vector + KV helpers; seed reset endpoint | Enables RAG and the agent |
+| 5–9 | RAG chat (Python SSE) + chat UI (web) | First demo-worthy moment |
+| 9–14 | DeadlineAgent tool-use loop + rules engine | The actual product moat |
+| 12–16 | Dashboard + AlertBanner (the hero component) | Proactive intelligence made visible |
+| 14–17 | Deepgram voice (STT + TTS) | Emotional demo hook; wins the track |
+| 16–18 | Arize Phoenix + Sentry instrumentation | Two observability prizes; low effort |
+| 18–22 | Letter generation + polish | Completes the story |
+| 22–24 | Demo rehearsal, edge cases, seed reset drills | Ship something that works reliably |
 
 ---
 
-## What NOT to Build at the Hackathon
+## 11. Positioning
 
-These are real product ideas that belong in the post-hackathon roadmap. Do not start them during the 48-hour window:
+**Before ClearPath:** Dana spends 180 hours, makes three costly mistakes, pays $4,200 in
+unexpected fees, and nobody ever told her the rules that would have prevented all of it.
 
-- **Browserbase / web automation** — Cool but emotionally disconnected from core pain
-- **Band multi-agent coordination** — Architectural complexity judges won't reward in a demo
-- **Orkes / Agentspan workflow engine** — Overkill; phase logic can live in Claude's context
-- **Court e-filing automation** — Legally sensitive, state-specific, months of work
-- **Beneficiary portal** — Real product need, wrong time
-- **Arize + Terac evals** — Real value, wrong time; needs dedicated team member
+**After ClearPath:** Dana uploads three documents. The AI reconstructs her estate. The
+agent tells her the next three actions. It catches the mistake before it happens.
 
----
-
-## Package.json Dependencies
-
-```json
-{
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
-    "@deepgram/sdk": "^3.5.0",
-    "@sentry/nextjs": "^8.0.0",
-    "@upstash/redis": "^1.34.0",
-    "@upstash/vector": "^1.1.5",
-    "ai": "^3.3.0",
-    "date-fns": "^3.6.0",
-    "formidable": "^3.5.1",
-    "ioredis": "^5.4.1",
-    "nanoid": "^5.0.7",
-    "next": "14.2.5",
-    "openai": "^4.55.0",
-    "pdf-parse": "^1.1.1",
-    "react": "^18",
-    "react-dom": "^18",
-    "sharp": "^0.33.4",
-    "zod": "^3.23.8"
-  },
-  "devDependencies": {
-    "@types/formidable": "^3.4.5",
-    "@types/node": "^20",
-    "@types/pdf-parse": "^1.1.4",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "autoprefixer": "^10.0.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.5",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5"
-  }
-}
-```
-
----
-
-## Sponsor Track Requirements
-
-| Sponsor | Prize | What must be true at demo |
-|---------|-------|--------------------------|
-| Anthropic | $5k API credits + office hours | Built with Claude Code; Claude doing hard reasoning on a meaningful human problem |
-| Deepgram | Nintendo Switch 2 per member | At least one Deepgram product (STT, TTS, or voice agent) demonstrably essential to experience |
-| Redis | Mac Minis + 25k cloud credits | Redis Iris used for vector search / agent memory; not just caching |
-| Sentry | Nintendo Switch 2 per member | Sentry used for observability; bonus points explicitly stated in criteria |
-
----
-
-## Positioning
-
-**Before ClearPath:** Dana spends 180 hours, makes three costly mistakes, pays $4,200 in unexpected fees, and nobody ever told her the rules that would have prevented all of it.
-
-**After ClearPath:** Dana uploads three documents. The AI reconstructs her estate. The AI tells her the next three actions. The AI catches the mistake before it happens.
-
-That is the complete story. Every architectural decision should serve that story. Nothing that doesn't serve that story gets built at the hackathon.
+Every architectural decision serves that story. Nothing that doesn't serve it gets built
+at the hackathon.
