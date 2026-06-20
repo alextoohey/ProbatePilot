@@ -1,0 +1,2 @@
+"""Estate state storage boundary."""
+

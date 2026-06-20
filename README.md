@@ -33,6 +33,12 @@ web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Py
 - [`CLAUDE.md`](CLAUDE.md) — working instructions for Claude / coding agents
 - [`project_overview.md`](project_overview.md) — full design, data shapes, flows, demo
 - [`hackathon_tracks_and_prizes.md`](hackathon_tracks_and_prizes.md) — tracks & sponsors
+- [`docs/project_structure.md`](docs/project_structure.md) — implementation folders,
+  ownership boundaries, and placeholder contracts
+- [`docs/database.md`](docs/database.md) — Redis KV/vector contract and database setup
+  checklist
+- [`docs/workstreams.md`](docs/workstreams.md) — per-member start points and stable
+  dependency boundaries
 - [`team/`](team/) — per-member role briefs (Members 1–4)
 - `agent/` — Python service · `web/` — Next.js frontend
 

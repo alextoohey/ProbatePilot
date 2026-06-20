@@ -1,0 +1,92 @@
+export type AssetType =
+  | "real_estate"
+  | "bank_account"
+  | "retirement"
+  | "vehicle"
+  | "personal_property"
+  | "other";
+
+export type AlertSeverity = "critical" | "warning" | "info";
+export type AlertType = "deadline" | "liability" | "missing_doc" | "rule_violation";
+
+export interface Executor {
+  name: string;
+  email: string;
+}
+
+export interface Asset {
+  id: string;
+  type: AssetType;
+  description: string;
+  estimatedValue?: number | null;
+  appraised: boolean;
+  appraisedValue?: number | null;
+  beneficiaryNamed?: boolean | null;
+}
+
+export interface Debt {
+  id: string;
+  creditor: string;
+  amount: number;
+  type: "secured" | "unsecured" | "priority";
+  notified: boolean;
+  notifiedDate?: string | null;
+  claimFiled?: boolean | null;
+}
+
+export interface Beneficiary {
+  id: string;
+  name: string;
+  share?: string | null;
+  specificBequest?: string | null;
+  contactInfo?: string | null;
+}
+
+export interface UploadedDocument {
+  id: string;
+  fileName: string;
+  documentType: string;
+  uploadedAt: string;
+  source?: string | null;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  status: "todo" | "in_progress" | "done" | "blocked";
+  phase: number;
+  dueDate?: string | null;
+  relatedAlertId?: string | null;
+}
+
+export interface Alert {
+  id: string;
+  severity: AlertSeverity;
+  type: AlertType;
+  title: string;
+  body: string;
+  rule: string;
+  daysRemaining?: number | null;
+  actionRequired: string;
+  createdAt: string;
+  dismissed: boolean;
+}
+
+export interface EstateState {
+  id: string;
+  deceasedName: string;
+  dateOfDeath: string;
+  appointmentDate: string;
+  state: "california";
+  executor: Executor;
+  assets: Asset[];
+  debts: Debt[];
+  beneficiaries: Beneficiary[];
+  documents: UploadedDocument[];
+  tasks: Task[];
+  alerts: Alert[];
+  phase: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
