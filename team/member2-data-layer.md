@@ -82,7 +82,10 @@ Pick one provider:
   `upstash-redis` for KV and `upstash-vector` for the vector index.
 - **Redis Cloud** — sponsor credits available; use the `redis` Python client.
 
-Keep the provider choice inside this module — callers never see it.
+Use Redis Cloud for the hackathon sponsor story. The current implementation stores estate
+KV under `estate:{id}` and uses Redis 8 Vector Sets under `estate:{id}:chunks`, with
+`text-embedding-3-small` vectors at 1536 dimensions. Keep the provider details behind
+this module so a later switch is a one-file change.
 
 Real Redis implementation checklist (from `docs/database.md`):
 1. Create the `estate_chunks` vector index with the correct embedding dimension (1536 for
@@ -122,13 +125,14 @@ is wired correctly before everyone depends on it.
 - [ ] `redis_client.py` exposes get/set/merge estate, upsert/search vectors (filtered by
       `estateId`), and read/write alerts.
 - [ ] `POST /seed` writes DEMO_ESTATE and round-trips (write → read back) without error.
-- [ ] Both KV and the vector index connect and are verified by a seed-then-read check.
+- [ ] Both KV and Redis Vector Sets connect and are verified by a seed-then-read +
+      upsert-then-search check.
 
 ---
 
 ## Sponsor Hooks You Unlock
 - **Redis** — your module *is* the Redis story: vector search as agent memory + retrieval,
-  filtered per `estateId`, not caching. Make search return text **and** metadata
+  scoped per `estateId`, not caching. Make search return text **and** metadata
   (score/source) so the chat can cite documents.
 - **Anthropic / Arize** — airtight Pydantic validation means Claude outputs are typed and
   trustworthy before they ever reach Redis; bad outputs fail loudly and show up in traces.

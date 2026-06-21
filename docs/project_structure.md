@@ -49,8 +49,8 @@ web/
 The scaffold intentionally includes working placeholders so team members can build in
 parallel:
 
-- `agent/store/redis_client.py` uses an in-memory store until Redis credentials and the
-  vector index are ready.
+- `agent/store/redis_client.py` can run in memory for offline work or use Redis Cloud for
+  KV plus Redis 8 Vector Sets for document retrieval.
 - `docs/database.md` defines the Redis KV/vector contract and the replacement checklist.
 - `docs/workstreams.md` gives each member a start-here map and stable dependencies.
 - `agent/llm/claude.py` and `agent/llm/embeddings.py` expose stable helper functions

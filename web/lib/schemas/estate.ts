@@ -1,9 +1,18 @@
 import { z } from "zod";
 
+export const estatePhaseSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+]);
+
 export const executorSchema = z.object({
   name: z.string(),
   email: z.string(),
-});
+}).strict();
 
 export const assetSchema = z.object({
   id: z.string(),
@@ -13,7 +22,7 @@ export const assetSchema = z.object({
   appraised: z.boolean(),
   appraisedValue: z.number().nullable().optional(),
   beneficiaryNamed: z.boolean().nullable().optional(),
-});
+}).strict();
 
 export const debtSchema = z.object({
   id: z.string(),
@@ -23,7 +32,7 @@ export const debtSchema = z.object({
   notified: z.boolean(),
   notifiedDate: z.string().nullable().optional(),
   claimFiled: z.boolean().nullable().optional(),
-});
+}).strict();
 
 export const beneficiarySchema = z.object({
   id: z.string(),
@@ -31,7 +40,7 @@ export const beneficiarySchema = z.object({
   share: z.string().nullable().optional(),
   specificBequest: z.string().nullable().optional(),
   contactInfo: z.string().nullable().optional(),
-});
+}).strict();
 
 export const uploadedDocumentSchema = z.object({
   id: z.string(),
@@ -39,16 +48,16 @@ export const uploadedDocumentSchema = z.object({
   documentType: z.string(),
   uploadedAt: z.string(),
   source: z.string().nullable().optional(),
-});
+}).strict();
 
 export const taskSchema = z.object({
   id: z.string(),
   title: z.string(),
   status: z.enum(["todo", "in_progress", "done", "blocked"]),
-  phase: z.number(),
+  phase: estatePhaseSchema,
   dueDate: z.string().nullable().optional(),
   relatedAlertId: z.string().nullable().optional(),
-});
+}).strict();
 
 export const alertSchema = z.object({
   id: z.string(),
@@ -61,7 +70,7 @@ export const alertSchema = z.object({
   actionRequired: z.string(),
   createdAt: z.string(),
   dismissed: z.boolean(),
-});
+}).strict();
 
 export const estateStateSchema = z.object({
   id: z.string(),
@@ -76,8 +85,7 @@ export const estateStateSchema = z.object({
   documents: z.array(uploadedDocumentSchema),
   tasks: z.array(taskSchema),
   alerts: z.array(alertSchema),
-  phase: z.number(),
+  phase: estatePhaseSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
-});
-
+}).strict();

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from .estate import Asset, Beneficiary
+from .estate import ContractModel
 
 
 DocumentType = Literal["will", "bank_statement", "deed", "unknown"]
 
 
-class DocumentExtraction(BaseModel):
+class DocumentExtraction(ContractModel):
     documentType: DocumentType
     confidence: float = Field(default=0.0, ge=0, le=1)
     rawChunks: list[str] = Field(default_factory=list)
@@ -50,4 +51,3 @@ class DeedExtraction(DocumentExtraction):
 class UnknownDocumentExtraction(DocumentExtraction):
     documentType: Literal["unknown"] = "unknown"
     reason: str = "Document type could not be determined."
-

@@ -1,4 +1,4 @@
-from .api import ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
+from .api import ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse, SearchResult
 from .documents import (
     BankStatementExtraction,
     DeedExtraction,
@@ -31,9 +31,9 @@ __all__ = [
     "Executor",
     "GenerateLetterRequest",
     "ParseDocumentResponse",
+    "SearchResult",
     "Task",
     "UnknownDocumentExtraction",
     "UploadedDocument",
     "WillExtraction",
 ]
-

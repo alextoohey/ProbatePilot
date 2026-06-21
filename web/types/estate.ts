@@ -8,6 +8,8 @@ export type AssetType =
 
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertType = "deadline" | "liability" | "missing_doc" | "rule_violation";
+export type EstatePhase = 1 | 2 | 3 | 4 | 5 | 6;
+export type TaskStatus = "todo" | "in_progress" | "done" | "blocked";
 
 export interface Executor {
   name: string;
@@ -53,8 +55,8 @@ export interface UploadedDocument {
 export interface Task {
   id: string;
   title: string;
-  status: "todo" | "in_progress" | "done" | "blocked";
-  phase: number;
+  status: TaskStatus;
+  phase: EstatePhase;
   dueDate?: string | null;
   relatedAlertId?: string | null;
 }
@@ -85,8 +87,7 @@ export interface EstateState {
   documents: UploadedDocument[];
   tasks: Task[];
   alerts: Alert[];
-  phase: number;
+  phase: EstatePhase;
   createdAt: string;
   updatedAt: string;
 }
-

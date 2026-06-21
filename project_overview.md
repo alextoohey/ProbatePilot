@@ -63,9 +63,10 @@ memory.** Each team member works mostly in one language.
 - **OpenAI embeddings** (`text-embedding-3-small`) for document chunks.
 
 ### Memory & vector store
-- **Redis** (Upstash for serverless, or Redis Cloud for the sponsor credits). KV holds
-  `estate:{id}`; a vector index holds embedded document chunks filtered by `estateId`.
-  This is **agent memory + retrieval**, which is exactly what the Redis prize asks for.
+- **Redis Cloud**. KV holds `estate:{id}`; Redis 8 Vector Sets hold embedded document
+  chunks under `estate:{id}:chunks`, with chunk text/source stored as vector attributes.
+  `text-embedding-3-small` produces 1536-dimensional vectors. This is **agent memory +
+  retrieval**, which is exactly what the Redis prize asks for.
 
 ### Voice (TypeScript `web/`)
 - **Deepgram** STT (executor speaks a question hands-free) and TTS (Claude's call-script
@@ -102,7 +103,7 @@ memory.** Each team member works mostly in one language.
 | Sponsor | Prize | What must be true at demo |
 |---------|-------|---------------------------|
 | **Anthropic** | $5k API credits + office hours | Built with Claude; a true agent (DeadlineAgent) doing hard, proactive reasoning on a meaningful human problem. |
-| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. Vector search filtered per `estateId`; KV holds the live state graph. |
+| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. Redis Cloud KV holds the live state graph; Redis 8 Vector Sets power per-estate retrieval. |
 | **Deepgram** | Nintendo Switch 2 / member | STT + TTS demonstrably essential — the executor uses voice during a simulated bank phone call. |
 | **Sentry** | Nintendo Switch 2 / member | Observability on the web layer + a team that course-corrects under pressure. ~30 min of setup. |
 | **Arize** | $1k | Phoenix tracing on the Python agent that *visibly improves the app* (catches a bad extraction / slow tool call during the build). |
@@ -250,7 +251,7 @@ Upload (PDF / image)
   → router detects document type
   → Sonnet 4.6 structured extraction → validated into a Pydantic model
   → Phoenix span { action: document_parse, doc_type }
-  → embed rawChunks (OpenAI) → upsert to Redis vector index (filter: estateId)
+  → embed rawChunks (OpenAI, 1536 dims) → upsert to Redis Vector Set `estate:{id}:chunks`
   → merge structured facts into estate state (Redis KV)
   → trigger DeadlineAgent to re-evaluate
   → return { extraction, alerts }
@@ -259,7 +260,7 @@ Upload (PDF / image)
 ### Chat RAG (Python `agent/`, streamed to `web/`)
 ```
 Message (typed, or Deepgram transcription)
-  → embed query → Redis vector search (top-k, filter estateId)
+  → embed query → Redis Vector Set search (top-k within `estate:{id}:chunks`)
   → load estate state from Redis KV
   → build cached system prompt: [base] + [estate state] + [retrieved chunks]
   → Opus 4.8 stream → SSE to the browser

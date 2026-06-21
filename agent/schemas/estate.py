@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def utc_now_iso() -> str:
@@ -22,14 +22,19 @@ DebtType = Literal["secured", "unsecured", "priority"]
 AlertSeverity = Literal["critical", "warning", "info"]
 AlertType = Literal["deadline", "liability", "missing_doc", "rule_violation"]
 TaskStatus = Literal["todo", "in_progress", "done", "blocked"]
+EstatePhase = Literal[1, 2, 3, 4, 5, 6]
 
 
-class Executor(BaseModel):
+class ContractModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Executor(ContractModel):
     name: str
     email: str
 
 
-class Asset(BaseModel):
+class Asset(ContractModel):
     id: str
     type: AssetType
     description: str
@@ -39,7 +44,7 @@ class Asset(BaseModel):
     beneficiaryNamed: bool | None = None
 
 
-class Debt(BaseModel):
+class Debt(ContractModel):
     id: str
     creditor: str
     amount: float
@@ -49,7 +54,7 @@ class Debt(BaseModel):
     claimFiled: bool | None = None
 
 
-class Beneficiary(BaseModel):
+class Beneficiary(ContractModel):
     id: str
     name: str
     share: str | None = None
@@ -57,7 +62,7 @@ class Beneficiary(BaseModel):
     contactInfo: str | None = None
 
 
-class UploadedDocument(BaseModel):
+class UploadedDocument(ContractModel):
     id: str
     fileName: str
     documentType: str
@@ -65,16 +70,16 @@ class UploadedDocument(BaseModel):
     source: str | None = None
 
 
-class Task(BaseModel):
+class Task(ContractModel):
     id: str
     title: str
     status: TaskStatus = "todo"
-    phase: int = Field(ge=1, le=6)
+    phase: EstatePhase
     dueDate: str | None = None
     relatedAlertId: str | None = None
 
 
-class Alert(BaseModel):
+class Alert(ContractModel):
     id: str
     severity: AlertSeverity
     type: AlertType
@@ -87,7 +92,7 @@ class Alert(BaseModel):
     dismissed: bool = False
 
 
-class EstateState(BaseModel):
+class EstateState(ContractModel):
     id: str
     deceasedName: str
     dateOfDeath: str
@@ -100,7 +105,6 @@ class EstateState(BaseModel):
     documents: list[UploadedDocument] = Field(default_factory=list)
     tasks: list[Task] = Field(default_factory=list)
     alerts: list[Alert] = Field(default_factory=list)
-    phase: int = Field(default=1, ge=1, le=6)
+    phase: EstatePhase = 1
     createdAt: str = Field(default_factory=utc_now_iso)
     updatedAt: str = Field(default_factory=utc_now_iso)
-
