@@ -301,8 +301,10 @@ async def parse_document(
             content_type=content_type,
             forced_type=forced_type or "",
         ) as current_span:
-            extraction = await parse_document_text(text, forced_type=forced_type)
-            set_span_attribute(current_span, "doc_type", extraction.documentType)
+            extraction, resolved_type = await parse_document_text(
+                text, filename=filename, forced_type=forced_type
+            )
+            set_span_attribute(current_span, "doc_type", resolved_type)
             set_span_attribute(current_span, "chunk_count", len(extraction.rawChunks))
     except DocumentParseError as exc:
         raise HTTPException(
@@ -313,9 +315,9 @@ async def parse_document(
             ),
         ) from exc
 
-    # Auto-detection failed and the user hasn't told us the type yet: don't store
-    # anything, ask the UI to prompt for a manual type selection instead.
-    if extraction.documentType == "unknown" and forced_type is None:
+    # Auto-detection (content + fuzzy filename) failed and the user hasn't told us
+    # the type yet: don't store anything, ask the UI to prompt for a manual choice.
+    if resolved_type == "unknown" and forced_type is None:
         return ParseDocumentResponse(
             estateId=estateId,
             extraction=extraction,
@@ -323,10 +325,6 @@ async def parse_document(
             needsTypeSelection=True,
             alerts=[],
         )
-
-    # Label the stored document with the user's choice when we have no structured
-    # parser for it (e.g. death certificate), otherwise with the parsed type.
-    resolved_type = forced_type if extraction.documentType == "unknown" and forced_type else extraction.documentType
 
     # Structured facts are written back into estate state (no-op for unknown types).
     _merge_extraction(estateId, extraction)
