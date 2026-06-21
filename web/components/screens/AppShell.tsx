@@ -241,10 +241,26 @@ export function AppShell() {
     setRoute("dashboard");
   }
   // After a document is parsed, re-fetch the estate so chat/letters unlock
-  // (hasDocuments flips once the backend has a document on file).
+  // and refresh the dashboard from the same post-parse snapshot. Previously
+  // this only changed sidebar metadata, leaving next steps stale until reload.
   async function refreshEstate(id: string) {
     try {
-      const estate = await getEstate(id);
+      let estate = await getEstate(id);
+      setLiveEstate(estate);
+      setLiveAlerts(estate.alerts);
+      setEstates((cur) =>
+        cur.map((e) =>
+          e.id === id
+            ? { ...e, phase: estate.phase, hasDocuments: e.id === "demo-milligan" || estate.documents.length > 0 }
+          : e,
+        ),
+      );
+
+      const alerts = await runDeadlineAgent(id);
+      estate = await getEstate(id);
+      setLiveAlerts(alerts);
+      setLiveEstate(estate);
+      setLiveAlertsFailed(false);
       setEstates((cur) =>
         cur.map((e) =>
           e.id === id
@@ -253,7 +269,9 @@ export function AppShell() {
         ),
       );
     } catch {
-      /* leave the current profile in place if the refresh fails */
+      // Keep the successfully fetched estate visible if only the agent rerun
+      // fails; its stored alerts are still more current than the old snapshot.
+      setLiveAlertsFailed(true);
     }
   }
   function createEstate(est: EstateProfile) {
@@ -269,9 +287,7 @@ export function AppShell() {
     ? []
     : liveAlerts.length > 0
       ? liveAlerts.map((a) => toDisplayAlert(a, guidanceAlerts))
-      : active.seeded
-        ? []
-        : guidanceAlerts;
+      : [];
   const detailItem = detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
   const detailCompleted = detailItem
     ? completedIds.includes(detailItem.id) || Boolean((detailItem as BackendAlert).dismissed)
