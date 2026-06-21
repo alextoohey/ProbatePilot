@@ -12,6 +12,7 @@ executor-ai/
 ├── web/                    # Next.js app: dashboard, chat, upload, voice
 ├── docs/                   # Shared implementation notes and ownership map
 ├── team/                   # Per-member task briefs
+├── Makefile                # Dev commands: make install / make dev / make seed
 ├── README.md
 ├── CLAUDE.md
 └── project_overview.md

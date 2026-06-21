@@ -44,18 +44,21 @@ web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Py
 
 ## Getting started
 ```bash
-# Python brain
-cd agent && python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # fill in keys
-uvicorn main:app --reload --port 8000
+# 1. Copy env files (won't overwrite if they already exist)
+make env
 
-# Next.js experience
-cd web && npm install
-cp .env.local.example .env.local   # fill in keys, AGENT_API_URL=http://localhost:8000
-npm run dev
+# 2. Install all dependencies (uv for Python, npm for web)
+make install
+
+# 3. Start both services — agent on :8000, web on :3000
+make dev
+
+# 4. In a separate terminal: seed the demo estate
+make seed
 ```
-Then `POST /seed` on the agent to load the demo estate.
+
+Fill in your API keys in `agent/.env` and `web/.env.local` after running `make env`.
+Minimum to start: `ANTHROPIC_API_KEY` in `agent/.env`. Everything else runs on stubs.
 
 ## Team
 | Member | Owns | Brief |
