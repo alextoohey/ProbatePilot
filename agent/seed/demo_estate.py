@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from schemas.estate import Asset, Beneficiary, Debt, EstateState, Executor, Task
+from schemas.estate import Asset, Beneficiary, Debt, EstateState, Executor, Task, UploadedDocument
 
 
 DEMO_ESTATE = EstateState(
@@ -51,6 +51,11 @@ DEMO_ESTATE = EstateState(
         Beneficiary(id="beneficiary-dana", name="Dana Milligan", share="40%"),
         Beneficiary(id="beneficiary-sarah", name="Sarah Milligan", share="40%"),
         Beneficiary(id="beneficiary-marcus", name="Marcus Milligan", share="20%"),
+    ],
+    documents=[
+        UploadedDocument(id="doc-seed-will", fileName="Last Will & Testament.pdf", documentType="will"),
+        UploadedDocument(id="doc-seed-bank", fileName="Wells Fargo statement, May.pdf", documentType="bank_statement"),
+        UploadedDocument(id="doc-seed-deed", fileName="Grant Deed, 1847 Marin Ave.pdf", documentType="deed"),
     ],
     tasks=[
         Task(id="task-order-death-certificates", title="Order 12 certified death certificates", phase=1),

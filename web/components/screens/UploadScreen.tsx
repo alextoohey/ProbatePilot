@@ -36,7 +36,7 @@ function assetTypeLabel(asset: EstateAsset) {
 }
 
 function assetFields(asset: EstateAsset) {
-  const fields = [{ label: "Source", value: asset.id }];
+  const fields: { label: string; value: string }[] = [];
   if (asset.beneficiaryNamed !== undefined && asset.beneficiaryNamed !== null) {
     fields.push({ label: "Beneficiary named", value: asset.beneficiaryNamed ? "Yes" : "No" });
   }
@@ -65,17 +65,28 @@ export function UploadScreen({ estate }: Props) {
   const fmt = fmtMoney;
   const seeded = !estate || estate.seeded;
 
-  const seedDocs: Doc[] = seeded ? [
-    { id: "doc1", name: "Last Will & Testament.pdf", type: "Will", parsed: true },
-    { id: "doc2", name: "Wells Fargo statement, May.pdf", type: "Bank statement", parsed: true },
-    { id: "doc3", name: "Grant Deed, 1847 Marin Ave.pdf", type: "Deed", parsed: true },
-  ] : [];
-  const [docs, setDocs] = React.useState<Doc[]>(seedDocs);
+  const estateId = estate?.id ?? E.id;
+
+  const [docs, setDocs] = React.useState<Doc[]>([]);
   const [drag, setDrag] = React.useState(false);
   const [parsing, setParsing] = React.useState(false);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
-  const [assets, setAssets] = React.useState<Asset[]>(seeded ? E.assets.map((a) => ({ ...a })) : []);
+  const [assets, setAssets] = React.useState<Asset[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    getEstate(estateId).then((e) => {
+      setAssets(e.assets.map(fromEstateAsset));
+      setDocs(e.documents.map((d) => ({
+        id: d.id,
+        name: d.fileName,
+        type: documentTypeLabel(d.documentType),
+        parsed: true,
+      })));
+    }).catch(() => {
+      setAssets(E.assets.map((a) => ({ ...a })));
+    });
+  }, [estateId]);
   const [draftRow, setDraftRow] = React.useState<Asset | null>(null);
   const [naSet, setNaSet] = React.useState<string[]>([]);
   const [openDoc, setOpenDoc] = React.useState<Doc | null>(null);
@@ -123,7 +134,6 @@ export function UploadScreen({ estate }: Props) {
   function deleteAsset(id: string) { setAssets((cur) => cur.filter((a) => a.id !== id)); if (editingId === id) cancelEdit(); }
 
   async function uploadFile(file: File) {
-    const estateId = estate?.id ?? E.id;
     setUploadError(null);
     setParsing(true);
     try {
@@ -168,10 +178,6 @@ export function UploadScreen({ estate }: Props) {
           if (parsing) return;
           const file = e.dataTransfer.files?.[0];
           if (file) void uploadFile(file);
-        }}
-        onClick={(e) => {
-          e.preventDefault();
-          if (!parsing) inputRef.current?.click();
         }}
         style={{
           display: "block", textAlign: "center", cursor: parsing ? "default" : "pointer", padding: "44px 24px",
