@@ -40,6 +40,9 @@ export function LettersScreen({ estate }: Props) {
   const [showPdf, setShowPdf] = React.useState(false);
   const [creditors, setCreditors] = React.useState<string[]>([]);
   const [beneficiaries, setBeneficiaries] = React.useState<string[]>([]);
+  
+  const markdownRef = React.useRef<HTMLDivElement>(null);
+  function copyDraft() { navigator.clipboard?.writeText(draft); }
 
   const typeLabel = LETTER_TYPES.find((t) => t.value === type)?.label ?? type;
   const recipientSource = RECIPIENT_SOURCE[type];
@@ -86,7 +89,7 @@ export function LettersScreen({ estate }: Props) {
     document.body.appendChild(f);
     const doc = f.contentWindow!.document;
     doc.open();
-    doc.write('<!DOCTYPE html><html><head><title>' + esc(typeLabel) + '</title><style>@page{size:letter;margin:1in;}html,body{margin:0;}body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;color:#1f2933;white-space:pre-wrap;}</style></head><body>' + esc(draft) + '</body></html>');
+    doc.write('<!DOCTYPE html><html><head><title>' + esc(typeLabel) + '</title><style>@page{size:letter;margin:1in;}html,body{margin:0;}body{font-family:"Times New Roman",serif;font-size:12px;line-height:1.75;color:#1f2933;white-space:pre-wrap;}</style></head><body>' + esc(draft) + '</body></html>')
     doc.close();
     f.contentWindow!.focus();
     setTimeout(() => { f.contentWindow!.print(); setTimeout(() => f.remove(), 1500); }, 350);
@@ -136,12 +139,13 @@ export function LettersScreen({ estate }: Props) {
           </div>
         </Card>
 
-        <Card title="Draft preview" subtitle={draft ? "Review, edit, then print to sign" : "No draft yet"}
+        <Card title="Draft preview" subtitle={draft ? "Review, then print or copy to send" : "No draft yet"}
           headerRight={draft ? <Badge tone="brand">Draft</Badge> : null}
-          footer={draft ? <div style={{ display: "flex", gap: 8 }}><Button variant="secondary" size="sm" onClick={() => navigator.clipboard && navigator.clipboard.writeText(draft)}>Copy</Button><Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button></div> : null}>
+          footer={draft ? <div style={{ display: "flex", gap: 8 }}><Button variant="secondary" size="sm" onClick={copyDraft}>Copy as plain text</Button><Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button></div> : null}>
           {draft ? (
-            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false}
-              style={{ display: "block", width: "100%", boxSizing: "border-box", minHeight: 420, resize: "vertical", margin: 0, whiteSpace: "pre-wrap", fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: 1.65, color: "var(--text-body)", background: "var(--surface-card)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "var(--space-4)", outline: "none" }} />
+            <div ref={markdownRef} style={{ padding: "var(--space-5)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.8, color: "var(--text-body)", whiteSpace: "pre-wrap" }}>
+              {draft}
+            </div>
           ) : (
             <div style={{ padding: "32px 0", textAlign: "center", color: "var(--text-subtle)" }}>
               <I.FileText size={28} color="var(--text-subtle)" />
@@ -165,7 +169,7 @@ export function LettersScreen({ estate }: Props) {
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ width: "100%", maxWidth: 720, background: "#fff", boxShadow: "var(--shadow-lg)", borderRadius: 2, padding: "72px 80px", boxSizing: "border-box", alignSelf: "flex-start", fontFamily: "var(--font-mono)", fontSize: "13px", lineHeight: 1.75, color: "#1f2933", whiteSpace: "pre-wrap" }}>
+            <div style={{ width: "100%", maxWidth: 720, background: "#fff", boxShadow: "var(--shadow-lg)", borderRadius: 2, padding: "72px 80px", boxSizing: "border-box", alignSelf: "flex-start", fontFamily: "Georgia, serif", fontSize: "13px", lineHeight: 1.75, color: "#1f2933", whiteSpace: "pre-wrap" }}>
               {draft}
             </div>
           </div>

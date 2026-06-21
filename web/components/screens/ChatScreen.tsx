@@ -5,8 +5,10 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Avatar, Button } from "@/components/ds";
+import { Markdown } from "@/components/Markdown";
 import type { EstateProfile } from "@/lib/design/data";
-import { getEstate, openChatStream } from "@/lib/agentClient";
+import { createChatSession, getChatHistory, getChatSessions, getEstate, openChatStream } from "@/lib/agentClient";
+import type { ChatSession, EstateState } from "@/types";
 
 const I = ExecutorIcons;
 
@@ -14,7 +16,25 @@ type Props = { estate: EstateProfile };
 
 type Msg = { from: "ai" | "user"; text: string };
 
-const SUGGESTIONS = ["What's the most urgent deadline?", "How much does the estate owe?", "Explain a DE-160 in plain English"];
+// Shown before the real estate loads (or if it can't be fetched).
+const DEFAULT_SUGGESTIONS = ["What's the most urgent deadline?", "What should I do next?", "Explain a DE-160 in plain English"];
+
+// Build suggested questions from the actual estate state so they point at this
+// estate's real deadlines, debts, and people instead of a fixed script.
+function buildSuggestions(estate: EstateState): string[] {
+  const out: string[] = [];
+  if (estate.alerts?.length) out.push("What's the most urgent deadline?");
+  if (estate.debts?.length) {
+    out.push("How much does the estate owe?");
+    const unnotified = estate.debts.find((d) => !d.notified);
+    if (unnotified) out.push(`Do I need to notify ${unnotified.creditor}?`);
+  }
+  if (estate.assets?.length) out.push("What is the estate worth right now?");
+  if (estate.beneficiaries?.length) out.push("Who inherits what under the will?");
+  out.push("What should I do next?");
+  const unique = Array.from(new Set(out));
+  return (unique.length ? unique : DEFAULT_SUGGESTIONS).slice(0, 4);
+}
 
 function firstName(full: string): string {
   return full.trim().split(/\s+/)[0] || full.trim();
@@ -37,8 +57,10 @@ function buildGreeting(deceasedName: string, executorName?: string | null, docum
 }
 
 export function ChatScreen({ estate }: Props) {
-  const suggestions = SUGGESTIONS;
+  const [suggestions, setSuggestions] = React.useState<string[]>(DEFAULT_SUGGESTIONS);
   const [msgs, setMsgs] = React.useState<Msg[]>(() => [{ from: "ai", text: buildGreeting(estate.deceasedName) }]);
+  const [sessions, setSessions] = React.useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = React.useState<string | null>(null);
   const [subtitle, setSubtitle] = React.useState(`Grounded in ${firstName(estate.deceasedName)}'s documents, not legal advice`);
   const [draft, setDraft] = React.useState("");
   const [recording, setRecording] = React.useState(false);
@@ -47,23 +69,62 @@ export function ChatScreen({ estate }: Props) {
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
 
-  // Enrich the greeting once the real estate loads — but only if the executor
-  // hasn't started the conversation yet.
+  // Load the real estate (for the greeting + suggestions) and any prior chat
+  // history. If there's saved history, restore the conversation; otherwise show
+  // a greeting built from this estate's executor, deceased, and parsed documents.
   React.useEffect(() => {
     if (!estate.id) return;
     let cancelled = false;
-    getEstate(estate.id)
-      .then((e) => {
-        if (cancelled) return;
-        setSubtitle(`Grounded in ${firstName(e.deceasedName)}'s documents, not legal advice`);
-        const greeting = buildGreeting(e.deceasedName, e.executor?.name, e.documents.map((d) => d.documentType));
+    Promise.allSettled([getEstate(estate.id), getChatSessions(estate.id)]).then(async ([eRes, sRes]) => {
+      if (cancelled) return;
+      const estateData = eRes.status === "fulfilled" ? eRes.value : null;
+      const nextSessions = sRes.status === "fulfilled" ? sRes.value : [];
+      if (estateData) {
+        setSubtitle(`Grounded in ${firstName(estateData.deceasedName)}'s documents, not legal advice`);
+        setSuggestions(buildSuggestions(estateData));
+      }
+      setSessions(nextSessions);
+      const latestSessionId = nextSessions[0]?.id ?? null;
+      setActiveSessionId(latestSessionId);
+      const history = latestSessionId ? await getChatHistory(estate.id, latestSessionId).catch(() => []) : [];
+      if (cancelled) return;
+      if (history.length > 0) {
+        setMsgs(history.map((m) => ({ from: m.role === "user" ? "user" : "ai", text: m.content })));
+      } else if (estateData) {
+        const greeting = buildGreeting(estateData.deceasedName, estateData.executor?.name, estateData.documents.map((d) => d.documentType));
         setMsgs((m) => (m.length === 1 && m[0].from === "ai" ? [{ from: "ai", text: greeting }] : m));
-      })
-      .catch(() => {
-        /* keep the name-only greeting if the estate can't be fetched */
-      });
+      }
+    });
     return () => { cancelled = true; };
   }, [estate.id]);
+
+  const greeting = React.useCallback(() => buildGreeting(estate.deceasedName), [estate.deceasedName]);
+
+  async function refreshSessions(nextActiveId?: string | null) {
+    const next = await getChatSessions(estate.id).catch(() => []);
+    setSessions(next);
+    if (nextActiveId !== undefined) setActiveSessionId(nextActiveId);
+  }
+
+  async function openSession(sessionId: string) {
+    if (busy || sessionId === activeSessionId) return;
+    setActiveSessionId(sessionId);
+    const history = await getChatHistory(estate.id, sessionId).catch(() => []);
+    setMsgs(history.length ? history.map((m) => ({ from: m.role === "user" ? "user" : "ai", text: m.content })) : [{ from: "ai", text: greeting() }]);
+  }
+
+  async function startNewChat() {
+    if (busy) return;
+    const created = await createChatSession(estate.id).catch(() => null);
+    if (!created) {
+      setActiveSessionId(null);
+      setMsgs([{ from: "ai", text: greeting() }]);
+      return;
+    }
+    setActiveSessionId(created.session.id);
+    setSessions((current) => [created.session, ...current.filter((s) => s.id !== created.session.id)]);
+    setMsgs([{ from: "ai", text: greeting() }]);
+  }
 
   React.useEffect(() => {
     if (endRef.current && endRef.current.parentNode) (endRef.current.parentNode as HTMLElement).scrollTop = endRef.current.offsetTop;
@@ -77,8 +138,15 @@ export function ChatScreen({ estate }: Props) {
     setBusy(true);
 
     let full = "";
+    let sessionId = activeSessionId;
     try {
-      const stream = await openChatStream({ estateId: estate.id, message: t });
+      if (!sessionId) {
+        const created = await createChatSession(estate.id);
+        sessionId = created.session.id;
+        setActiveSessionId(sessionId);
+        setSessions((current) => [created.session, ...current.filter((s) => s.id !== created.session.id)]);
+      }
+      const stream = await openChatStream({ estateId: estate.id, sessionId, message: t });
       const reader = stream?.getReader();
       const decoder = new TextDecoder();
       if (reader) {
@@ -89,6 +157,10 @@ export function ChatScreen({ estate }: Props) {
           for (const line of chunk.split("\n")) {
             if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
             const parsed = JSON.parse(line.replace("data: ", ""));
+            if (parsed.sessionId) {
+              sessionId = parsed.sessionId;
+              setActiveSessionId(sessionId);
+            }
             full += parsed.token ?? "";
             setMsgs((m) => {
               const copy = [...m];
@@ -98,6 +170,7 @@ export function ChatScreen({ estate }: Props) {
           }
         }
       }
+      await refreshSessions(sessionId);
       if (viaVoice && full.trim()) void speak(full);
     } catch {
       setMsgs((m) => {
@@ -161,6 +234,11 @@ export function ChatScreen({ estate }: Props) {
     }
   }
 
+  function sessionLabel(session: ChatSession): string {
+    const when = new Date(session.updatedAt);
+    return Number.isNaN(when.getTime()) ? "" : when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
   if (estate && !estate.hasDocuments) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "80px 40px", textAlign: "center" }}>
@@ -176,7 +254,48 @@ export function ChatScreen({ estate }: Props) {
   }
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 760, margin: "0 auto", width: "100%" }}>
+    <div style={{ height: "100%", display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", width: "100%", minWidth: 0 }}>
+      <aside style={{ borderRight: "1px solid var(--border-subtle)", background: "var(--paper-50)", padding: 16, overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text-strong)" }}>Chats</h2>
+          <button
+            type="button"
+            aria-label="Start a new chat"
+            title="Start a new chat"
+            onClick={startNewChat}
+            disabled={busy}
+            style={{ width: 34, height: 34, borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--surface-card)", color: "var(--text-brand)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: busy ? "not-allowed" : "pointer" }}
+          >
+            <I.Plus size={18} />
+          </button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sessions.length === 0 ? (
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", lineHeight: "var(--leading-relaxed)", padding: "8px 2px" }}>No saved chats yet.</div>
+          ) : sessions.map((session) => {
+            const active = session.id === activeSessionId;
+            return (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => openSession(session.id)}
+                disabled={busy}
+                style={{ textAlign: "left", borderRadius: "var(--radius-md)", border: active ? "1px solid var(--evergreen-300)" : "1px solid transparent", background: active ? "var(--evergreen-50)" : "transparent", padding: "10px 9px", cursor: busy ? "not-allowed" : "pointer", color: "var(--text-body)" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{session.title}</span>
+                  <span style={{ flex: "none", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{sessionLabel(session)}</span>
+                </div>
+                {session.preview ? (
+                  <div style={{ marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{session.preview}</div>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      <section style={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 760, margin: "0 auto", width: "100%", minWidth: 0 }}>
       <header style={{ padding: "24px 28px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-xl)", fontWeight: 600, color: "var(--text-strong)" }}>Estate chat</h1>
         <p style={{ margin: "4px 0 0", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{subtitle}</p>
@@ -187,13 +306,17 @@ export function ChatScreen({ estate }: Props) {
           <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", flexDirection: m.from === "user" ? "row-reverse" : "row" }}>
             {m.from === "ai" ? <Avatar initials="AI" tone="ink" size="sm" /> : <Avatar name="Dana Milligan" size="sm" />}
             <div style={{
-              maxWidth: "76%", whiteSpace: "pre-wrap", lineHeight: "var(--leading-relaxed)", fontSize: "var(--text-base)",
+              maxWidth: "76%", whiteSpace: m.from === "user" ? "pre-wrap" : "normal", lineHeight: "var(--leading-relaxed)", fontSize: "var(--text-base)",
               padding: "12px 16px", borderRadius: m.from === "user" ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
               background: m.from === "user" ? "var(--evergreen-700)" : "var(--surface-card)",
               color: m.from === "user" ? "var(--text-inverse)" : "var(--text-body)",
               border: m.from === "user" ? "none" : "1px solid var(--border-subtle)",
               boxShadow: "var(--shadow-xs)",
-            }}>{m.text || (m.from === "ai" && busy ? "…" : "")}</div>
+            }}>
+              {m.from === "ai"
+                ? (m.text ? <Markdown text={m.text} /> : (busy ? "…" : ""))
+                : m.text}
+            </div>
           </div>
         ))}
         <div ref={endRef} />
@@ -226,6 +349,7 @@ export function ChatScreen({ estate }: Props) {
           <Button variant="primary" onClick={() => send()} disabled={busy} leadingIcon={<I.Send size={16} />} style={{ height: 44 }}>Send</Button>
         </div>
       </div>
+      </section>
     </div>
   );
 }

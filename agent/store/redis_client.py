@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import uuid
 from copy import deepcopy
 from datetime import date
 from math import sqrt
@@ -26,6 +27,9 @@ DEFAULT_ESTATE_ID = "demo-milligan"
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
 _ESTATES: dict[str, EstateState] = {}
+_CHATS: dict[str, list[dict[str, Any]]] = {}
+_CHAT_SESSIONS: dict[str, list[dict[str, Any]]] = {}
+MAX_CHAT_MESSAGES = 200
 _VECTORS: list[dict[str, Any]] = []
 _USERS: dict[str, User] = {}
 _USER_EMAILS: dict[str, str] = {}
@@ -61,6 +65,14 @@ def document_file_key(estate_id: str, doc_id: str) -> str:
     return f"{estate_key(estate_id)}:file:{doc_id}"
 
 
+def chat_key(estate_id: str) -> str:
+    return f"{estate_key(estate_id)}:chat"
+
+
+def chat_sessions_key(estate_id: str) -> str:
+    return f"{estate_key(estate_id)}:chat_sessions"
+
+
 def store_backend() -> str:
     _load_env_file()
     return os.getenv("STORE_BACKEND", "memory").strip().lower() or "memory"
@@ -69,7 +81,196 @@ def store_backend() -> str:
 def seed_demo_estate() -> EstateState:
     estate = build_demo_estate()
     clear_estate_vectors(estate.id)
+    clear_chat_history(estate.id)
     return set_estate_state(estate)
+
+
+# --------------------------------------------------------------------------- #
+# Chat history (persisted per estate alongside estate state)
+# --------------------------------------------------------------------------- #
+
+
+def _decode_chat(raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    if isinstance(raw, (str, bytes, bytearray)):
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    else:
+        data = raw
+    return [m for m in data if isinstance(m, dict)] if isinstance(data, list) else []
+
+
+def get_chat_history(estate_id: str) -> list[dict[str, Any]]:
+    if _use_upstash():
+        return _decode_chat(_redis().get(chat_key(estate_id)))
+    if _use_redis_cloud():
+        return _decode_chat(_redis_cloud().get(chat_key(estate_id)))
+    return deepcopy(_CHATS.get(estate_id, []))
+
+
+def append_chat_messages(estate_id: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    history = get_chat_history(estate_id)
+    history.extend(messages)
+    if len(history) > MAX_CHAT_MESSAGES:
+        history = history[-MAX_CHAT_MESSAGES:]
+
+    if _use_upstash():
+        _redis().set(chat_key(estate_id), json.dumps(history))
+    elif _use_redis_cloud():
+        _redis_cloud().set(chat_key(estate_id), json.dumps(history))
+    else:
+        _CHATS[estate_id] = deepcopy(history)
+    return history
+
+
+def clear_chat_history(estate_id: str) -> None:
+    if _use_upstash():
+        _redis().delete(chat_key(estate_id))
+        _redis().delete(chat_sessions_key(estate_id))
+    elif _use_redis_cloud():
+        _redis_cloud().delete(chat_key(estate_id))
+        _redis_cloud().delete(chat_sessions_key(estate_id))
+    else:
+        _CHATS.pop(estate_id, None)
+        _CHAT_SESSIONS.pop(estate_id, None)
+
+
+def _title_from_message(message: str) -> str:
+    clean = " ".join(message.strip().split())
+    if not clean:
+        return "New chat"
+    return clean if len(clean) <= 42 else f"{clean[:39].rstrip()}..."
+
+
+def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
+    messages = _decode_chat(session.get("messages"))
+    preview = next((m.get("content", "") for m in reversed(messages) if m.get("content")), None)
+    return {
+        "id": str(session.get("id", "")),
+        "title": str(session.get("title") or "New chat"),
+        "createdAt": str(session.get("createdAt") or utc_now_iso()),
+        "updatedAt": str(session.get("updatedAt") or session.get("createdAt") or utc_now_iso()),
+        "messageCount": len(messages),
+        "preview": preview,
+    }
+
+
+def _decode_chat_sessions(raw: Any, estate_id: str) -> list[dict[str, Any]]:
+    if raw is None:
+        legacy = get_chat_history(estate_id)
+        if not legacy:
+            return []
+        first_created = str(legacy[0].get("createdAt") or utc_now_iso())
+        last_created = str(legacy[-1].get("createdAt") or first_created)
+        first_user = next((m.get("content", "") for m in legacy if m.get("role") == "user"), "")
+        return [{
+            "id": "default",
+            "title": _title_from_message(first_user) if first_user else "Estate chat",
+            "createdAt": first_created,
+            "updatedAt": last_created,
+            "messages": legacy,
+        }]
+    if isinstance(raw, (str, bytes, bytearray)):
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    else:
+        data = raw
+    if not isinstance(data, list):
+        return []
+    return [s for s in data if isinstance(s, dict)]
+
+
+def _get_chat_sessions_raw(estate_id: str) -> list[dict[str, Any]]:
+    if _use_upstash():
+        return _decode_chat_sessions(_redis().get(chat_sessions_key(estate_id)), estate_id)
+    if _use_redis_cloud():
+        return _decode_chat_sessions(_redis_cloud().get(chat_sessions_key(estate_id)), estate_id)
+    raw = deepcopy(_CHAT_SESSIONS.get(estate_id))
+    return _decode_chat_sessions(raw, estate_id)
+
+
+def _set_chat_sessions_raw(estate_id: str, sessions: list[dict[str, Any]]) -> None:
+    if _use_upstash():
+        _redis().set(chat_sessions_key(estate_id), json.dumps(sessions))
+    elif _use_redis_cloud():
+        _redis_cloud().set(chat_sessions_key(estate_id), json.dumps(sessions))
+    else:
+        _CHAT_SESSIONS[estate_id] = deepcopy(sessions)
+
+
+def list_chat_sessions(estate_id: str) -> list[dict[str, Any]]:
+    sessions = [_session_summary(s) for s in _get_chat_sessions_raw(estate_id)]
+    return sorted(sessions, key=lambda s: s.get("updatedAt", ""), reverse=True)
+
+
+def create_chat_session(estate_id: str, title: str | None = None) -> dict[str, Any]:
+    now = utc_now_iso()
+    session = {
+        "id": f"chat-{uuid.uuid4().hex[:10]}",
+        "title": title or "New chat",
+        "createdAt": now,
+        "updatedAt": now,
+        "messages": [],
+    }
+    sessions = _get_chat_sessions_raw(estate_id)
+    sessions.append(session)
+    _set_chat_sessions_raw(estate_id, sessions)
+    return _session_summary(session)
+
+
+def get_chat_session_history(estate_id: str, session_id: str | None = None) -> tuple[str | None, list[dict[str, Any]]]:
+    sessions = _get_chat_sessions_raw(estate_id)
+    if not sessions:
+        return None, []
+    session = None
+    if session_id:
+        session = next((s for s in sessions if s.get("id") == session_id), None)
+    if session is None:
+        session = max(sessions, key=lambda s: str(s.get("updatedAt") or ""))
+    return str(session.get("id")), _decode_chat(session.get("messages"))
+
+
+def append_chat_session_messages(estate_id: str, session_id: str | None, messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    sessions = _get_chat_sessions_raw(estate_id)
+    session = next((s for s in sessions if session_id and s.get("id") == session_id), None)
+    if session is None:
+        now = utc_now_iso()
+        first_user = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
+        session = {
+            "id": session_id or f"chat-{uuid.uuid4().hex[:10]}",
+            "title": _title_from_message(first_user),
+            "createdAt": now,
+            "updatedAt": now,
+            "messages": [],
+        }
+        sessions.append(session)
+
+    history = _decode_chat(session.get("messages"))
+    history.extend(messages)
+    if len(history) > MAX_CHAT_MESSAGES:
+        history = history[-MAX_CHAT_MESSAGES:]
+    if str(session.get("title") or "New chat") == "New chat":
+        first_user = next((m.get("content", "") for m in history if m.get("role") == "user"), "")
+        session["title"] = _title_from_message(first_user)
+    session["messages"] = history
+    session["updatedAt"] = str(messages[-1].get("createdAt") if messages else utc_now_iso())
+    _set_chat_sessions_raw(estate_id, sessions)
+
+    # Keep the original one-history key populated with the latest active chat for
+    # older clients and tests that still call /chat-history without sessions.
+    if not session_id or session.get("id") == session_id:
+        if _use_upstash():
+            _redis().set(chat_key(estate_id), json.dumps(history))
+        elif _use_redis_cloud():
+            _redis_cloud().set(chat_key(estate_id), json.dumps(history))
+        else:
+            _CHATS[estate_id] = deepcopy(history)
+    return str(session.get("id")), history
 
 
 # --------------------------------------------------------------------------- #
