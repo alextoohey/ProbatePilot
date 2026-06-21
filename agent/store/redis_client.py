@@ -35,6 +35,7 @@ _USERS: dict[str, User] = {}
 _USER_EMAILS: dict[str, str] = {}
 _SESSIONS: dict[str, str] = {}
 _DOC_FILES: dict[str, dict[str, Any]] = {}
+_RESEARCH_RUNS: dict[str, dict[str, Any]] = {}
 _REDIS_CLIENT: Any | None = None
 _REDIS_CLOUD_CLIENT: Any | None = None
 _VECTOR_CLIENT: Any | None = None
@@ -63,6 +64,10 @@ def session_key(token: str) -> str:
 
 def document_file_key(estate_id: str, doc_id: str) -> str:
     return f"{estate_key(estate_id)}:file:{doc_id}"
+
+
+def research_run_key(estate_id: str) -> str:
+    return f"{estate_key(estate_id)}:researcher"
 
 
 def chat_key(estate_id: str) -> str:
@@ -396,6 +401,18 @@ def get_estate_state(estate_id: str = DEFAULT_ESTATE_ID) -> EstateState:
     return deepcopy(_ESTATES[estate_id])
 
 
+def list_estate_ids() -> list[str]:
+    if _use_upstash():
+        keys = _redis().keys(f"{ESTATE_KEY_PREFIX}*")
+        return sorted(_estate_id_from_key(key) for key in keys if _is_estate_state_key(str(key)))
+
+    if _use_redis_cloud():
+        keys = _redis_cloud().scan_iter(match=f"{ESTATE_KEY_PREFIX}*")
+        return sorted(_estate_id_from_key(key) for key in keys if _is_estate_state_key(str(key)))
+
+    return sorted(_ESTATES.keys())
+
+
 def set_estate_state(estate: EstateState | dict[str, Any]) -> EstateState:
     estate = EstateState.model_validate(_plain(estate))
     estate.updatedAt = utc_now_iso()
@@ -444,6 +461,30 @@ def write_alerts(estate_id: str, alerts: list[Alert | dict[str, Any]]) -> list[A
     estate.alerts = [Alert.model_validate(_plain(alert)) for alert in alerts]
     set_estate_state(estate)
     return estate.alerts
+
+
+def get_research_run_state(estate_id: str) -> dict[str, Any]:
+    key = research_run_key(estate_id)
+    if _use_upstash():
+        raw = _redis().get(key)
+        return json.loads(raw) if raw else {}
+    if _use_redis_cloud():
+        raw = _redis_cloud().get(key)
+        return json.loads(raw) if raw else {}
+    return deepcopy(_RESEARCH_RUNS.get(estate_id, {}))
+
+
+def set_research_run_state(estate_id: str, state: dict[str, Any]) -> dict[str, Any]:
+    payload = _plain(state)
+    key = research_run_key(estate_id)
+    if _use_upstash():
+        _redis().set(key, json.dumps(payload))
+        return payload
+    if _use_redis_cloud():
+        _redis_cloud().set(key, json.dumps(payload))
+        return payload
+    _RESEARCH_RUNS[estate_id] = deepcopy(payload)
+    return deepcopy(payload)
 
 
 def add_document(estate_id: str, document: UploadedDocument) -> EstateState:
@@ -853,6 +894,17 @@ def _validate_user(raw_user: Any) -> User:
     if isinstance(raw_user, str):
         raw_user = json.loads(raw_user)
     return User.model_validate(raw_user)
+
+
+def _is_estate_state_key(key: str) -> bool:
+    suffix = key.removeprefix(ESTATE_KEY_PREFIX)
+    return bool(suffix) and ":" not in suffix
+
+
+def _estate_id_from_key(key: Any) -> str:
+    if isinstance(key, bytes):
+        key = key.decode("utf-8")
+    return str(key).removeprefix(ESTATE_KEY_PREFIX)
 
 
 def _plain(value: Any) -> Any:
