@@ -12,3 +12,7 @@ node_modules/
 dist/
 coverage/
 
+# TypeScript incremental build cache — generated, must never be committed
+# (otherwise it produces merge conflicts on every branch merge)
+*.tsbuildinfo
+
