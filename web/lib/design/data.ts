@@ -43,8 +43,8 @@ export type Alert = {
   rule: string;
   body: string;
   actionRequired: string;
-  whatYouNeed: string[];
-  steps: string[];
+  whatYouNeed?: string[];
+  steps?: string[];
 };
 
 export type Task = {
