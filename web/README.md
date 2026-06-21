@@ -1,6 +1,6 @@
 # Web App
 
-Next.js frontend for the ClearPath Estate dashboard, chat, upload, voice, and generated
+Next.js frontend for the Executor AI dashboard, chat, upload, voice, and generated
 letters.
 
 ## Ownership

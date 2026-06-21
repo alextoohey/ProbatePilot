@@ -1,6 +1,6 @@
 # Member 3 — DeadlineAgent + Reasoning (Python)
 
-**Owner**: TBD
+**Owner**: Sameer
 **Language**: Python (`agent/`)
 **Track dependency**: The DeadlineAgent is the product moat — the thing that makes
 ClearPath an agent, not a chatbot. Your alerts are the hero of the demo. You also own the

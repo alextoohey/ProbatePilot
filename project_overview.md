@@ -1,8 +1,8 @@
-# ClearPath Estate — Project Overview
+# Executor AI — Project Overview
 
 ## 1. The Product
 
-ClearPath Estate is an AI executor assistant that prevents executors from making
+Executor AI is an AI executor assistant that prevents executors from making
 expensive legal and financial mistakes during estate administration. It parses estate
 documents into a live intelligence graph and proactively alerts the executor *before*
 deadline violations and liability triggers occur — not after.

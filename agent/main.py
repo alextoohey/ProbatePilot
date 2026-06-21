@@ -22,7 +22,7 @@ from store.redis_client import (
 )
 
 
-app = FastAPI(title="ClearPath Estate Agent")
+app = FastAPI(title="Executor AI Agent")
 
 
 @app.get("/health")

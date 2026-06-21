@@ -1,2 +1,2 @@
-"""ClearPath Estate Python agent service."""
+"""Executor AI Python agent service."""
 

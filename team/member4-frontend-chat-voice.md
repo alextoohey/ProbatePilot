@@ -1,6 +1,6 @@
 # Member 4 — Frontend + Voice (TypeScript)
 
-**Owner**: TBD
+**Owner**: Sherry
 **Language**: TypeScript (`web/`)
 **Track dependency**: You build what the judges see and touch. The dashboard, chat, and
 voice *are* the demo. You also own the Deepgram voice integration (a whole prize) and the

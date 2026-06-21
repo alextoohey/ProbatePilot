@@ -1,4 +1,4 @@
-# ClearPath Estate
+# Executor AI
 
 > The AI that prevents executors from making expensive mistakes — by building a live
 > intelligence graph of the estate and running a true agent that alerts *before* probate

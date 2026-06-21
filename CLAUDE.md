@@ -1,4 +1,4 @@
-# ClearPath Estate — Claude Instructions
+# Executor AI — Claude Instructions
 
 ## What This Is
 An AI executor assistant. It parses estate documents into a live state graph, then

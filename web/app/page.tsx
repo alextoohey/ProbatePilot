@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-8 p-6">
       <header>
-        <p className="text-sm font-semibold uppercase tracking-wide text-slate-600">ClearPath Estate</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-slate-600">Executor AI</p>
         <h1 className="mt-2 text-3xl font-semibold">Executor dashboard</h1>
       </header>
       <EstateOverview estate={estate} />

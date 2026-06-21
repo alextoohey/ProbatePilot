@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ClearPath Estate",
+  title: "Executor AI",
   description: "Executor assistant dashboard",
 };
 
