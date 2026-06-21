@@ -73,6 +73,7 @@ export function UploadScreen({ estate }: Props) {
   const [docs, setDocs] = React.useState<Doc[]>(seedDocs);
   const [drag, setDrag] = React.useState(false);
   const [parsing, setParsing] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [assets, setAssets] = React.useState<Asset[]>(seeded ? E.assets.map((a) => ({ ...a })) : []);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draftRow, setDraftRow] = React.useState<Asset | null>(null);
@@ -123,6 +124,7 @@ export function UploadScreen({ estate }: Props) {
 
   async function uploadFile(file: File) {
     const estateId = estate?.id ?? E.id;
+    setUploadError(null);
     setParsing(true);
     try {
       const parsed = await parseDocument(file, estateId);
@@ -139,6 +141,7 @@ export function UploadScreen({ estate }: Props) {
       setAssets(refreshed.assets.map(fromEstateAsset));
     } catch (error) {
       console.error(error);
+      setUploadError(error instanceof Error ? error.message : "Couldn't read that document. Please try again.");
     } finally {
       setParsing(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -162,22 +165,25 @@ export function UploadScreen({ estate }: Props) {
         onDrop={(e) => {
           e.preventDefault();
           setDrag(false);
+          if (parsing) return;
           const file = e.dataTransfer.files?.[0];
           if (file) void uploadFile(file);
         }}
         onClick={(e) => {
           e.preventDefault();
-          inputRef.current?.click();
+          if (!parsing) inputRef.current?.click();
         }}
         style={{
-          display: "block", textAlign: "center", cursor: "pointer", padding: "44px 24px",
+          display: "block", textAlign: "center", cursor: parsing ? "default" : "pointer", padding: "44px 24px",
           borderRadius: "var(--radius-lg)", border: `1.5px dashed ${drag ? "var(--evergreen-500)" : "var(--border-strong)"}`,
           background: drag ? "var(--evergreen-50)" : "var(--surface-card)", transition: "all var(--transition-fast)",
+          opacity: parsing ? 0.7 : 1,
         }}>
         <input
           ref={inputRef}
           type="file"
           accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
+          disabled={parsing}
           style={{ display: "none" }}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -191,6 +197,9 @@ export function UploadScreen({ estate }: Props) {
           {parsing ? "Reading the document…" : "Drop a document, or click to upload"}
         </div>
         <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or text. Parsed by Claude</div>
+        {uploadError ? (
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--critical-text)", marginTop: 10 }}>{uploadError}</div>
+        ) : null}
       </label>
 
       <Card title="What to upload" subtitle="Required documents first, then optional ones you only need if they apply to this estate" padded={false}>

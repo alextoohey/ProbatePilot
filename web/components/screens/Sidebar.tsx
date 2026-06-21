@@ -30,7 +30,7 @@ export function Sidebar({ active, onNavigate, estates, activeEstateId, onSwitchE
   return (
     <aside style={{ width: 248, flex: "none", background: "var(--paper-50)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "18px 20px 14px" }}>
-        <img src="../../assets/logomark.svg" alt="" style={{ width: 28, height: 28 }} />
+        <img src="/assets/logomark.svg" alt="" style={{ width: 28, height: 28 }} />
         <span style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600, letterSpacing: "-0.4px", color: "var(--text-strong)" }}>
           Executor<b style={{ fontFamily: "var(--font-sans)", fontWeight: 700, color: "var(--text-brand)" }}> AI</b>
         </span>
