@@ -58,6 +58,7 @@ from store.redis_client import (
     create_session,
     create_user,
     delete_document,
+    delete_letter,
     delete_session,
     get_chat_history,
     get_chat_session_history,
@@ -757,6 +758,14 @@ async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
             estate_id=request.estateId,
         )
         return {"estateId": request.estateId, "letterType": letter_type, "draft": draft}
+
+
+@app.delete("/letter/{estate_id}/{letter_id}")
+async def delete_letter_route(estate_id: str, letter_id: str) -> dict[str, object]:
+    removed = delete_letter(estate_id, letter_id)
+    if removed is None:
+        raise HTTPException(status_code=404, detail="Letter not found.")
+    return {"estateId": estate_id, "deletedLetterId": letter_id}
 
 
 @app.post("/save-letter")

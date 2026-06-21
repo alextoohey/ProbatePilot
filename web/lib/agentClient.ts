@@ -241,6 +241,15 @@ export async function openChatStream(request: ChatRequest): Promise<ReadableStre
   return response.body;
 }
 
+export async function deleteLetter(estateId: string, letterId: string): Promise<void> {
+  const response = await fetch(`/api/agent/letter/${encodeURIComponent(estateId)}/${encodeURIComponent(letterId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, "Could not delete that letter."));
+  }
+}
+
 export async function saveLetter(
   estateId: string,
   letterType: string,

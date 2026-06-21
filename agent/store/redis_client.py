@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from schemas.api import SearchResult
 from schemas.auth import User
-from schemas.estate import Alert, EstateState, Executor, UploadedDocument, utc_now_iso
+from schemas.estate import Alert, EstateState, Executor, SavedLetter, UploadedDocument, utc_now_iso
 from seed.demo_estate import build_demo_estate
 
 
@@ -448,6 +448,16 @@ def write_alerts(estate_id: str, alerts: list[Alert | dict[str, Any]]) -> list[A
 
 def add_document(estate_id: str, document: UploadedDocument) -> EstateState:
     return merge_estate_state(estate_id, {"documents": [document]})
+
+
+def delete_letter(estate_id: str, letter_id: str) -> SavedLetter | None:
+    estate = get_estate_state(estate_id)
+    letter = next((l for l in estate.letters if l.id == letter_id), None)
+    if letter is None:
+        return None
+    estate.letters = [l for l in estate.letters if l.id != letter_id]
+    set_estate_state(estate)
+    return letter
 
 
 def delete_document(estate_id: str, doc_id: str) -> UploadedDocument | None:

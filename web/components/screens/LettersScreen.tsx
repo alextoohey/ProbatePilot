@@ -5,7 +5,7 @@ import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, Button, Select, Badge } from "@/components/ds";
 import type { EstateProfile } from "@/lib/design/data";
-import { generateLetter, getEstate, saveLetter } from "@/lib/agentClient";
+import { deleteLetter, generateLetter, getEstate, saveLetter } from "@/lib/agentClient";
 import type { SavedLetter } from "@/types";
 
 const I = ExecutorIcons;
@@ -50,6 +50,7 @@ export function LettersScreen({ estate }: Props) {
   const [savedLetters, setSavedLetters] = React.useState<SavedLetter[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   // Simulated drafting progress — there's no token-level signal from the
   // single-shot letter call, so we ramp toward ~92% while busy and reset after.
@@ -72,6 +73,21 @@ export function LettersScreen({ estate }: Props) {
       setSavedLetters((prev) => [letter, ...prev.filter((l) => l.id !== letter.id)]);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    if (!estateId || deletingId) return;
+    setDeletingId(id);
+    setSavedLetters((prev) => prev.filter((l) => l.id !== id));
+    try {
+      await deleteLetter(estateId, id);
+    } catch {
+      // Restore on failure by re-fetching
+      getEstate(estateId).then((e) => setSavedLetters(e.letters ?? [])).catch(() => {});
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -237,9 +253,13 @@ export function LettersScreen({ estate }: Props) {
           <h2 style={{ margin: "0 0 var(--space-4)", fontFamily: "var(--font-display)", fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-strong)" }}>Saved letters</h2>
           <div style={{ display: "grid", gap: "var(--space-2)" }}>
             {savedLetters.map((l) => (
-              <button key={l.id} onClick={() => loadLetter(l)}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "var(--space-3) var(--space-4)", background: "var(--surface-card)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                <I.FileText size={16} color="var(--text-muted)" />
+              <div key={l.id}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "var(--space-3) var(--space-4)", background: "var(--surface-card)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", cursor: "pointer", textAlign: "left", width: "100%", boxSizing: "border-box" }}
+                onClick={() => loadLetter(l)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && loadLetter(l)}>
+                <I.FileText size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)" }}>
                     {LETTER_TYPES.find((t) => t.value === l.letterType)?.label ?? l.letterType}
@@ -247,7 +267,12 @@ export function LettersScreen({ estate }: Props) {
                   </p>
                   <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{new Date(l.savedAt).toLocaleString()}</p>
                 </div>
-              </button>
+                <button onClick={(e) => handleDelete(e, l.id)} disabled={deletingId === l.id}
+                  aria-label="Delete letter"
+                  style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, border: "none", borderRadius: "var(--radius-sm)", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", opacity: deletingId === l.id ? 0.4 : 1 }}>
+                  <I.X size={14} />
+                </button>
+              </div>
             ))}
           </div>
         </section>
