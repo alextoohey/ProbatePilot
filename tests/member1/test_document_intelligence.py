@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from documents.router import detect_document_type, parse_document_text
+from llm.claude import DocumentParseError
 from llm.embeddings import VECTOR_SIZE, embed_query, embed_texts
 from schemas.documents import (
     BankStatementExtraction,
@@ -28,30 +29,18 @@ def test_detect_document_type_routes_expected_documents(text: str, expected_type
 
 
 @pytest.mark.asyncio
-async def test_parse_will_returns_valid_extraction_with_chunks() -> None:
-    extraction = await parse_document_text(
-        "Last Will and Testament. Dana Milligan shall serve as executor. "
-        "Beneficiary Sarah receives personal property."
-    )
-
-    assert isinstance(extraction, WillExtraction)
-    assert extraction.documentType == "will"
-    assert extraction.executorName == "Dana Milligan"
-    assert extraction.confidence == pytest.approx(0.55)
-    assert extraction.beneficiaries
-    assert extraction.rawChunks
+async def test_parse_will_requires_structured_extraction_without_fallback() -> None:
+    with pytest.raises(DocumentParseError):
+        await parse_document_text(
+            "Last Will and Testament. Dana Milligan shall serve as executor. "
+            "Beneficiary Sarah receives personal property."
+        )
 
 
 @pytest.mark.asyncio
-async def test_parse_bank_statement_extracts_stable_fields() -> None:
-    extraction = await parse_document_text("Wells Fargo checking statement for account 4412.")
-
-    assert isinstance(extraction, BankStatementExtraction)
-    assert extraction.documentType == "bank_statement"
-    assert extraction.institution == "Wells Fargo"
-    assert extraction.accountType == "checking"
-    assert extraction.accountLast4 == "4412"
-    assert extraction.rawChunks == ["Wells Fargo checking statement for account 4412."]
+async def test_parse_bank_statement_requires_structured_extraction_without_fallback() -> None:
+    with pytest.raises(DocumentParseError):
+        await parse_document_text("Wells Fargo checking statement for account 4412.")
 
 
 @pytest.mark.asyncio
@@ -105,8 +94,8 @@ def test_parse_document_endpoint_embeds_adds_document_and_returns_alerts(monkeyp
         data={"estateId": "demo-milligan"},
         files={
             "file": (
-                "will.txt",
-                b"Last Will and Testament. Dana Milligan shall serve as executor.",
+                "deed.txt",
+                b"Grant Deed for 1847 Marin Ave. APN 123-456. Legal description attached.",
                 "text/plain",
             )
         },
@@ -115,14 +104,14 @@ def test_parse_document_endpoint_embeds_adds_document_and_returns_alerts(monkeyp
     assert response.status_code == 200
     payload = response.json()
     assert payload["estateId"] == "demo-milligan"
-    assert payload["extraction"]["documentType"] == "will"
+    assert payload["extraction"]["documentType"] == "deed"
     assert payload["alerts"] == []
 
     estate = get_estate_state("demo-milligan")
-    assert any(document.fileName == "will.txt" for document in estate.documents)
+    assert any(document.fileName == "deed.txt" for document in estate.documents)
 
-    matches = semantic_search("demo-milligan", embed_query("Dana executor testament"), top_k=3)
+    matches = semantic_search("demo-milligan", embed_query("Marin Ave legal description"), top_k=3)
     assert matches
     assert matches[0].estateId == "demo-milligan"
-    assert matches[0].source == "will.txt"
-    assert matches[0].documentType == "will"
+    assert matches[0].source == "deed.txt"
+    assert matches[0].documentType == "deed"

@@ -13,8 +13,9 @@ dependencies = [
     "openai>=1.50.0",
 
     # Observability
-    "arize-phoenix>=4.0.0",
+    "arize-otel",
     "openinference-instrumentation-anthropic>=0.1.0",
+    "opentelemetry-sdk>=1.42.1",
 
     # Data & validation
     "pydantic>=2.7.0",

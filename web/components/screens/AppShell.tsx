@@ -9,8 +9,8 @@ import {
   type EstateProfile,
   type ExecutorProfile,
 } from "@/lib/design/data";
-import { getMe, logout as apiLogout } from "@/lib/agentClient";
-import type { EstateState, PublicUser } from "@/types";
+import { getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
+import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
 import { Sidebar } from "./Sidebar";
 import { DashboardScreen } from "./DashboardScreen";
 import { StepDetailScreen } from "./StepDetailScreen";
@@ -66,8 +66,21 @@ export function AppShell() {
   const [showCreate, setShowCreate] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
   const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>({ all: true, deadlines: true, weekly: true, email: false });
+  const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[]>([]);
+  const [liveEstate, setLiveEstate] = React.useState<EstateState | null>(null);
   const E = DEMO_ESTATE;
   const I = ExecutorIcons;
+
+  React.useEffect(() => {
+    const est = estates.find((e) => e.id === activeEstateId);
+    if (!est?.seeded) return;
+    Promise.all([runDeadlineAgent(activeEstateId), getEstate(activeEstateId)])
+      .then(([alerts, estate]) => {
+        setLiveAlerts(alerts);
+        setLiveEstate(estate);
+      })
+      .catch(() => {});
+  }, [activeEstateId]);
   const titles: Record<Route, string> = { dashboard: "Dashboard", documents: "Documents", chat: "Estate chat", letters: "Letters" };
 
   // Load the logged-in user and their estates. A missing/stale session bounces
@@ -134,8 +147,9 @@ export function AppShell() {
     setRoute("dashboard");
   }
 
-  // attention items live across phases (current + next)
-  const allAlerts = [...E.alerts, ...(E.alertsNext || [])];
+  const allAlerts = liveAlerts.length > 0
+    ? liveAlerts.map((a) => ({ ...a, steps: [] as string[], whatYouNeed: [] as string[], daysRemaining: a.daysRemaining ?? 0 }))
+    : [...E.alerts, ...(E.alertsNext || [])];
   const detailItem = active.seeded && detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
 
   let body: React.ReactNode;
@@ -153,7 +167,7 @@ export function AppShell() {
   } else {
     crumb = titles[route];
     if (route === "dashboard")
-      body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} />;
+      body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} liveAlerts={liveAlerts} liveEstate={liveEstate} />;
     else if (route === "documents") body = <UploadScreen key={active.id} estate={active} />;
     else if (route === "chat") body = <ChatScreen key={active.id} estate={active} />;
     else if (route === "letters") body = <LettersScreen key={active.id} estate={active} />;

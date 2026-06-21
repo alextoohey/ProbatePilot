@@ -105,6 +105,16 @@ export async function parseDocument(file: File, estateId = DEFAULT_ESTATE_ID): P
   body.append("estateId", estateId);
   body.append("file", file);
   const response = await fetch("/api/agent/parse-document", { method: "POST", body });
+  if (!response.ok) {
+    let message = "We couldn't parse that document. Please reupload a clearer file.";
+    try {
+      const payload = await response.json();
+      if (typeof payload?.detail === "string") message = payload.detail;
+    } catch {
+      // Keep the friendly default when the proxy returns a non-JSON error body.
+    }
+    throw new Error(message);
+  }
   const payload = await response.json();
   return parseDocumentResponseSchema.parse(payload);
 }

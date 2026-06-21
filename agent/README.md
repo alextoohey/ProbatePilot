@@ -23,5 +23,4 @@ uv run uvicorn main:app --reload --port 8000
 ```
 
 The current store and AI helpers include in-memory/offline placeholders. Add real Redis,
-Claude, embeddings, and Phoenix behavior behind the existing module functions.
-
+Claude, embeddings, and Arize AX tracing behavior behind the existing module functions.

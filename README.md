@@ -19,13 +19,13 @@ Redis is the memory.
 ```
 web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Python)
   dashboard · chat UI · voice                     documents · RAG chat · DeadlineAgent
-  Deepgram · Sentry                               Claude · embeddings · Arize Phoenix
+  Deepgram · Sentry                               Claude · embeddings · Arize AX
             └──────────────── Redis (KV state + vector search) ────────────────┘
 ```
 
 ## Stack
 - **agent/** — Python · FastAPI · Anthropic (`claude-opus-4-8`, `claude-sonnet-4-6`) ·
-  OpenAI embeddings · Pydantic · Arize Phoenix
+  OpenAI embeddings · Pydantic · Arize AX tracing
 - **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
 - **shared** — Redis Cloud: KV estate state + Redis 8 Vector Sets for document retrieval
 

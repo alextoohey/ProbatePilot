@@ -53,7 +53,7 @@ Start in:
 - `agent/rules/california_probate.py`
 - `agent/prompts/system.py`
 - `agent/prompts/letters.py`
-- `agent/observability/phoenix.py`
+- `agent/observability/arize.py`
 
 Stable dependencies available now:
 
@@ -61,6 +61,8 @@ Stable dependencies available now:
 - `embed_query()` and `stream_chat()` exist as placeholders.
 - `POST /deadline-agent`, `POST /chat`, and `POST /generate-letter` exist.
 - The deterministic rule evaluator returns seed alerts for the dashboard.
+- `agent/observability/arize.py` now initializes Arize AX tracing on app startup and
+  exposes `span()` for manual tracing.
 
 Replace the deterministic agent with Claude tool-use while keeping the route contracts
 stable for Member 4.

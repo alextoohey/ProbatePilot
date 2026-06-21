@@ -107,102 +107,19 @@ wheels = [
 ]
 
 [[package]]
-name = "arize-phoenix"
-version = "17.9.0"
+name = "arize-otel"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "aioitertools" },
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "arize-phoenix-client" },
-    { name = "arize-phoenix-evals" },
-    { name = "arize-phoenix-otel" },
-    { name = "authlib" },
-    { name = "bashkit" },
-    { name = "cachetools" },
-    { name = "email-validator" },
-    { name = "fastapi" },
-    { name = "grpc-interceptor" },
-    { name = "grpcio" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "jmespath" },
-    { name = "joserfc" },
-    { name = "jsonpath-ng" },
-    { name = "jsonschema" },
-    { name = "ldap3" },
-    { name = "numpy" },
     { name = "openinference-instrumentation" },
-    { name = "openinference-instrumentation-openai" },
     { name = "openinference-semantic-conventions" },
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
-    { name = "orjson" },
-    { name = "pandas" },
-    { name = "prometheus-client" },
-    { name = "psutil" },
-    { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "pydantic-ai-slim", extra = ["anthropic", "bedrock", "google", "mcp", "openai", "ui"] },
-    { name = "pystache" },
-    { name = "python-dateutil" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "scikit-learn" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "sqlean-py", version = "3.49.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'win32'" },
-    { name = "sqlean-py", version = "3.50.4.5", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
-    { name = "starlette" },
-    { name = "strawberry-graphql" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-    { name = "uvicorn" },
-    { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/13/003caed010ba766a21381b7ba1cf720596217ba2fc1e2be7011c65202ce4/arize_phoenix-17.9.0.tar.gz", hash = "sha256:f55bba3a0f7d139ab7ce195f088d06ac124e8a8a9bf2d6e7625da9ffbab25532", size = 6888074, upload-time = "2026-06-19T22:22:13.274Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/70/e318acceb6d7807a376ac126bde32bd9457ddf7a525fdcd629d9672f1bcb/arize_otel-0.13.0.tar.gz", hash = "sha256:6ccd1e26be23a52a0dad2798c924036e2c73a0db086a2214c2817fcfa36a31e6", size = 16799, upload-time = "2026-05-27T20:14:56.61Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/d9/6ec2f95ffa401ca7ed0c3e4a8cff6f952fc59b38efd7c56b21fc81cd4391/arize_phoenix-17.9.0-py3-none-any.whl", hash = "sha256:4c8e673904c2194007428ff66d5dbdc234e4a9bf4e0711be14a2f28e90948092", size = 7298298, upload-time = "2026-06-19T22:22:10.594Z" },
-]
-
-[[package]]
-name = "arize-phoenix-client"
-version = "2.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "openinference-instrumentation" },
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-exporter-otlp" },
-    { name = "opentelemetry-sdk" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/55/56b25e27ecaa6953d2c883e86553c11184b11fe761427c0408992cedee70/arize_phoenix_client-2.9.0.tar.gz", hash = "sha256:487e3db2c4dfb366dd7c2aefee858a4c29425c3add41cd722be4c490d30b5fa4", size = 196704, upload-time = "2026-06-11T22:43:39.41Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/f9/e2e4cb71e4909fbf82d6b8630524395f02ee92f4cb23b7907a99fbf267fb/arize_phoenix_client-2.9.0-py3-none-any.whl", hash = "sha256:820298bafdd06ffd3e3bf5177d435aa824270fdd478978b5e6ab3d08367651b8", size = 186331, upload-time = "2026-06-11T22:43:37.638Z" },
-]
-
-[[package]]
-name = "arize-phoenix-evals"
-version = "3.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "jsonpath-ng" },
-    { name = "openinference-instrumentation" },
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-api" },
-    { name = "pandas" },
-    { name = "pydantic" },
-    { name = "pystache" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/8d/f35d4f43e8ac5df628950fcf828671beb4d7f670eaf27ee180071b6daba7/arize_phoenix_evals-3.1.0.tar.gz", hash = "sha256:7af3679a605ee5a111e771c6af6ab2bff22df86c45d1ffe4798d1c651e6812e7", size = 94635, upload-time = "2026-05-05T03:58:08.212Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/1c/ae08ebc6679d026e5d58f3ef1b661a8fc9ee63a0cc238fdeaaed4223a18d/arize_phoenix_evals-3.1.0-py3-none-any.whl", hash = "sha256:e9f1aeadc48786a59acdf4da0b965004a4fdffc81a1337eb2a2ce8d0412e49df", size = 121359, upload-time = "2026-05-05T03:58:06.766Z" },
+    { url = "https://files.pythonhosted.org/packages/21/8e/2e067e00f27aba8999dd610dada7c119d728a545b32d5381fe7898b32bb4/arize_otel-0.13.0-py3-none-any.whl", hash = "sha256:1748b42d432c6b8013200e62804baa20b0e471a074b1cfe573a9bd0026f6515b", size = 17745, upload-time = "2026-05-27T20:14:55.321Z" },
 ]
 
 [[package]]
@@ -210,11 +127,6 @@ name = "arize-phoenix-otel"
 version = "0.16.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "openinference-instrumentation" },
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-exporter-otlp" },
-    { name = "opentelemetry-proto" },
-    { name = "opentelemetry-sdk" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "typing-extensions" },
     { name = "wrapt" },
@@ -546,10 +458,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
-    { name = "arize-phoenix" },
+    { name = "arize-otel" },
     { name = "fastapi" },
     { name = "openai" },
     { name = "openinference-instrumentation-anthropic" },
+    { name = "opentelemetry-sdk" },
     { name = "pdfplumber" },
     { name = "pydantic" },
     { name = "pypdf" },
@@ -572,10 +485,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40.0" },
-    { name = "arize-phoenix", specifier = ">=4.0.0" },
+    { name = "arize-otel" },
     { name = "fastapi", specifier = ">=0.111.0" },
     { name = "openai", specifier = ">=1.50.0" },
     { name = "openinference-instrumentation-anthropic", specifier = ">=0.1.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.42.1" },
     { name = "pdfplumber", specifier = ">=0.11.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pypdf", specifier = ">=4.0.0" },

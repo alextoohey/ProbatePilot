@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import date
 from typing import Any
@@ -16,14 +17,14 @@ from agents.deadline_agent import run_deadline_agent
 from auth.security import hash_password, new_session_token, verify_password
 from documents.pdf_reader import extract_text
 from documents.router import parse_document_text
-from llm.claude import stream_chat
+from llm.claude import DocumentParseError, generate_letter_draft, stream_chat
 from llm.embeddings import embed_query, embed_texts
-from observability.phoenix import span
-from prompts.letters import LETTER_PROMPTS
+from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
+from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
 from prompts.system import build_chat_prompt
 from schemas.api import AnyDocumentExtraction, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
-from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
+from schemas.documents import BankStatementExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
 from schemas.estate import Asset, EstateState, Executor, UploadedDocument
 from store.redis_client import (
     add_document,
@@ -45,12 +46,18 @@ from store.redis_client import (
 )
 
 
+LOGGER = logging.getLogger(__name__)
 app = FastAPI(title="Executor AI Agent")
 
 
+@app.on_event("startup")
+async def startup() -> None:
+    init_tracing()
+
+
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, object]:
+    return {"status": "ok", "tracing": get_tracing_status()}
 
 
 # --------------------------------------------------------------------------- #
@@ -172,8 +179,9 @@ async def document_file(estate_id: str, doc_id: str) -> Response:
 
 @app.post("/deadline-agent")
 async def deadline_agent(request: DeadlineAgentRequest) -> dict[str, object]:
-    alerts = await run_deadline_agent(request.estateId)
-    return {"estateId": request.estateId, "alerts": alerts}
+    with span("route.deadline_agent", estate_id=request.estateId, action_type="deadline_agent_run"):
+        alerts = await run_deadline_agent(request.estateId)
+        return {"estateId": request.estateId, "alerts": alerts}
 
 
 ACCEPTED_CONTENT_TYPES = {
@@ -189,13 +197,30 @@ ACCEPTED_CONTENT_TYPES = {
 
 def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None:
     """Write structured facts from an extraction back into estate state."""
+    try:
+        estate = get_estate_state(estate_id)
+    except KeyError:
+        estate = None
     partial: dict[str, Any] = {}
 
     if isinstance(extraction, WillExtraction):
         if extraction.beneficiaries:
-            partial["beneficiaries"] = extraction.beneficiaries
+            existing_names = {b.name.lower().strip() for b in estate.beneficiaries} if estate else set()
+            new_bens = [
+                b for b in extraction.beneficiaries
+                if b.name.lower().strip() not in existing_names
+            ]
+            if new_bens:
+                partial["beneficiaries"] = new_bens
+
         if extraction.assets:
-            partial["assets"] = extraction.assets
+            existing_descs = {a.description.lower().strip() for a in estate.assets} if estate else set()
+            new_assets = [
+                a for a in extraction.assets
+                if a.description.lower().strip() not in existing_descs
+            ]
+            if new_assets:
+                partial["assets"] = new_assets
 
     elif isinstance(extraction, BankStatementExtraction):
         parts = [
@@ -204,20 +229,41 @@ def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None
             f"({extraction.accountType})" if extraction.accountType else None,
         ]
         description = " ".join(p for p in parts if p) or "Bank account"
-        partial["assets"] = [Asset(
-            id=f"asset-bank-{uuid.uuid4().hex[:8]}",
-            type="bank_account",
-            description=description,
-            estimatedValue=extraction.balance,
-        )]
+        existing = next(
+            (a for a in estate.assets
+             if a.type == "bank_account" and extraction.accountLast4
+             and extraction.accountLast4 in a.description),
+            None,
+        ) if estate else None
+        if existing:
+            existing.description = description
+            existing.estimatedValue = extraction.balance or existing.estimatedValue
+            partial["assets"] = [existing]
+        else:
+            partial["assets"] = [Asset(
+                id=f"asset-bank-{uuid.uuid4().hex[:8]}",
+                type="bank_account",
+                description=description,
+                estimatedValue=extraction.balance,
+            )]
 
     elif isinstance(extraction, DeedExtraction) and extraction.propertyAddress:
-        partial["assets"] = [Asset(
-            id=f"asset-re-{uuid.uuid4().hex[:8]}",
-            type="real_estate",
-            description=f"Property at {extraction.propertyAddress}",
-            estimatedValue=extraction.estimatedValue,
-        )]
+        addr_key = extraction.propertyAddress.lower()[:30]
+        existing = next(
+            (a for a in estate.assets
+             if a.type == "real_estate" and addr_key in a.description.lower()),
+            None,
+        ) if estate else None
+        if existing:
+            existing.estimatedValue = extraction.estimatedValue or existing.estimatedValue
+            partial["assets"] = [existing]
+        else:
+            partial["assets"] = [Asset(
+                id=f"asset-re-{uuid.uuid4().hex[:8]}",
+                type="real_estate",
+                description=f"Property at {extraction.propertyAddress}",
+                estimatedValue=extraction.estimatedValue,
+            )]
 
     if partial:
         merge_estate_state(estate_id, partial)
@@ -242,8 +288,34 @@ async def parse_document(
     if not text.strip():
         raise HTTPException(status_code=422, detail="Could not extract any text from the uploaded file.")
 
-    with span("document_parse", estate_id=estateId, filename=filename, action="document_parse"):
-        extraction = await parse_document_text(text)
+    try:
+        with span(
+            "route.parse_document.extract",
+            estate_id=estateId,
+            action_type="document_parse",
+            upload_filename=filename,
+            content_type=content_type,
+        ) as current_span:
+            extraction = await parse_document_text(text)
+            set_span_attribute(current_span, "doc_type", extraction.documentType)
+            set_span_attribute(current_span, "chunk_count", len(extraction.rawChunks))
+    except DocumentParseError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't parse this required document. Please reupload a clearer PDF, "
+                "image, or text file, or enter the information manually."
+            ),
+        ) from exc
+
+    if isinstance(extraction, UnknownDocumentExtraction):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't identify this document. Please reupload a clearer file or "
+                "enter the information manually."
+            ),
+        )
 
     _merge_extraction(estateId, extraction)
 
@@ -265,31 +337,57 @@ async def parse_document(
 
 @app.post("/chat")
 async def chat(request: ChatRequest) -> StreamingResponse:
-    estate_state = get_estate_state(request.estateId)
-    matches = semantic_search(request.estateId, embed_query(request.message), top_k=request.topK)
-    prompt = build_chat_prompt(
-        estate_state.model_dump_json(),
-        [match.text for match in matches],
-    )
+    with span("route.chat.prepare", estate_id=request.estateId, action_type="chat_query", top_k=request.topK) as current_span:
+        estate_state = get_estate_state(request.estateId)
+        matches: list[dict[str, object]] = []
+        retrieval_failed = False
+        try:
+            query_embedding = embed_query(request.message)
+            matches = semantic_search(request.estateId, query_embedding, top_k=request.topK)
+        except Exception as exc:
+            retrieval_failed = True
+            set_span_error(current_span, exc)
+            LOGGER.exception("Chat retrieval failed; continuing with estate state only.")
+        set_span_attribute(current_span, "retrieval_failed", retrieval_failed)
+        set_span_attribute(current_span, "retrieved_chunks", len(matches))
+        prompt = build_chat_prompt(
+            estate_state.model_dump_json(),
+            [match.text for match in matches],
+        )
+        set_span_attribute(current_span, "prompt_length", len(prompt))
 
     async def events():
-        async for token in stream_chat(prompt, request.message):
-            yield f"data: {json.dumps({'token': token})}\n\n"
-        yield "data: [DONE]\n\n"
+        with span(
+            "route.chat.stream",
+            estate_id=request.estateId,
+            action_type="chat_query",
+            top_k=request.topK,
+            retrieved_chunks=len(matches),
+        ):
+            async for token in stream_chat(prompt, request.message):
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @app.post("/generate-letter")
 async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
-    estate_state = get_estate_state(request.estateId)
-    prompt = LETTER_PROMPTS.get(request.letterType, LETTER_PROMPTS["creditor_notice"])
-    recipient = request.recipientName or "Known Creditor"
-    draft = (
-        f"{recipient}\n\n"
-        f"Re: Estate of {estate_state.deceasedName}\n\n"
-        f"{prompt}\n\n"
-        f"{estate_state.executor.name} is the executor for the estate. "
-        "This placeholder letter should be replaced by the Claude-backed generator."
-    )
-    return {"estateId": request.estateId, "letterType": request.letterType, "draft": draft}
+    letter_type = normalize_letter_type(request.letterType)
+    with span(
+        "route.generate_letter",
+        estate_id=request.estateId,
+        action_type="letter_generation",
+        letter_type=letter_type,
+    ) as current_span:
+        estate_state = get_estate_state(request.estateId)
+        prompt = build_letter_prompt(estate_state, letter_type, request.recipientName)
+        fallback = build_letter_fallback(estate_state, letter_type, request.recipientName)
+        set_span_attribute(current_span, "prompt_length", len(prompt))
+        draft = await generate_letter_draft(
+            prompt=prompt,
+            letter_type=letter_type,
+            fallback=fallback,
+            estate_id=request.estateId,
+        )
+        return {"estateId": request.estateId, "letterType": letter_type, "draft": draft}
