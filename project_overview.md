@@ -39,7 +39,7 @@ This plan splits the system along its natural seam:
 
 | Concern | Language | Why |
 |---------|----------|-----|
-| Document parsing, embeddings, the agent loop, RAG | **Python** | The richest ecosystem for LLM agents, structured extraction, and tracing/eval. Pydantic gives airtight Claude-output validation. Arize Phoenix (the eval/observability sponsor) is Python-native. |
+| Document parsing, embeddings, the agent loop, RAG | **Python** | The richest ecosystem for LLM agents, structured extraction, and tracing/eval. Pydantic gives airtight Claude-output validation. Arize AX tracing is the observability sponsor story. |
 | Dashboard, chat UI, voice, presentation | **TypeScript / Next.js** | Best-in-class UI velocity, first-class Deepgram + Sentry SDKs, trivial SSE streaming to the browser. |
 | Shared estate state + vectors | **Redis** | One source of truth both services read/write. Vector search + KV in one store ⇒ the Redis sponsor story is real, not "caching." |
 
@@ -73,7 +73,7 @@ memory.** Each team member works mostly in one language.
   use case, not bolted on.
 
 ### Observability (two complementary layers)
-- **Arize Phoenix** traces the Python agent: every Claude call and the full DeadlineAgent
+- **Arize AX** traces the Python agent: every Claude call and the full DeadlineAgent
   loop become spans with token counts, latency, and `estate_id` / `action_type`
   attributes. It is the natural eval surface for the agent and satisfies the Arize prize.
 - **Sentry** instruments the Next.js layer (the proxy, voice routes, UI errors) and is the
@@ -105,7 +105,7 @@ memory.** Each team member works mostly in one language.
 | **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. Vector search filtered per `estateId`; KV holds the live state graph. |
 | **Deepgram** | Nintendo Switch 2 / member | STT + TTS demonstrably essential — the executor uses voice during a simulated bank phone call. |
 | **Sentry** | Nintendo Switch 2 / member | Observability on the web layer + a team that course-corrects under pressure. ~30 min of setup. |
-| **Arize** | $1k | Phoenix tracing on the Python agent that *visibly improves the app* (catches a bad extraction / slow tool call during the build). |
+| **Arize** | $1k | Arize AX tracing on the Python agent that *visibly improves the app* (catches a bad extraction / slow tool call during the build). |
 
 ### Deliberately out of scope (roadmap, not the hackathon)
 - **Browserbase** (web-automation agent that looks up county-assessor property values),
@@ -144,7 +144,8 @@ clearpath-estate/
 │   │   └── california_probate.py   # Hardcoded CA probate ruleset
 │   ├── prompts/                    # System prompt, extraction, letter prompts
 │   ├── observability/
-│   │   └── phoenix.py              # Arize Phoenix / OpenInference setup
+│   │   ├── arize.py                # Arize AX / OpenInference setup
+│   │   └── phoenix.py              # Compatibility shim for older imports
 │   └── seed/
 │       └── demo_estate.py          # DEMO_ESTATE + reset
 │
@@ -249,7 +250,7 @@ Upload (PDF / image)
   → extract text (pypdf/pdfplumber) or pass image/PDF blocks to Claude vision
   → router detects document type
   → Sonnet 4.6 structured extraction → validated into a Pydantic model
-  → Phoenix span { action: document_parse, doc_type }
+  → Arize span { action: document_parse, doc_type }
   → embed rawChunks (OpenAI) → upsert to Redis vector index (filter: estateId)
   → merge structured facts into estate state (Redis KV)
   → trigger DeadlineAgent to re-evaluate
@@ -264,7 +265,7 @@ Message (typed, or Deepgram transcription)
   → build cached system prompt: [base] + [estate state] + [retrieved chunks]
   → Opus 4.8 stream → SSE to the browser
   → if voice mode: web/ pipes text to Deepgram TTS
-  → Phoenix span { action: chat_query }
+  → Arize span { action: chat_query }
 ```
 
 ### DeadlineAgent (Python `agent/` — the moat)
@@ -277,7 +278,7 @@ Triggered on demand or after every parse
        and reasons about cross-rule consequences (e.g. appraisal blocks DE-160)
   → produce ranked Alert[] (critical first)
   → write alerts back to Redis KV
-  → Phoenix span { action: deadline_agent_run, rules_checked, alerts_fired }
+  → Arize span { action: deadline_agent_run, rules_checked, alerts_fired }
   → return alerts
 ```
 
@@ -286,7 +287,7 @@ Triggered on demand or after every parse
 Letter type (e.g. "Wells Fargo estate notification")
   → load estate state → select letter prompt → inject estate-specific variables
   → Sonnet 4.6 drafts a formatted, sign-ready letter
-  → Phoenix span { action: letter_generation, letter_type }
+  → Arize span { action: letter_generation, letter_type }
   → return draft to LetterPreview in web/
 ```
 
@@ -372,7 +373,7 @@ A `POST /seed` endpoint resets this to a known-good state between demo runs.
 | 9–14 | DeadlineAgent tool-use loop + rules engine | The actual product moat |
 | 12–16 | Dashboard + AlertBanner (the hero component) | Proactive intelligence made visible |
 | 14–17 | Deepgram voice (STT + TTS) | Emotional demo hook; wins the track |
-| 16–18 | Arize Phoenix + Sentry instrumentation | Two observability prizes; low effort |
+| 16–18 | Arize AX + Sentry instrumentation | Two observability prizes; low effort |
 | 18–22 | Letter generation + polish | Completes the story |
 | 22–24 | Demo rehearsal, edge cases, seed reset drills | Ship something that works reliably |
 
