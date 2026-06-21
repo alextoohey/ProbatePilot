@@ -63,7 +63,9 @@ export async function generateLetter(
   letterType: string,
   estateId = DEFAULT_ESTATE_ID,
 ): Promise<GenerateLetterResponse> {
-  const request = generateLetterRequestSchema.parse({ estateId, letterType });
+  const commaIdx = letterType.indexOf(",");
+  const recipientName = commaIdx !== -1 ? letterType.slice(commaIdx + 1).trim() : undefined;
+  const request = generateLetterRequestSchema.parse({ estateId, letterType, recipientName });
   const response = await fetch("/api/agent/generate-letter", {
     method: "POST",
     headers: { "content-type": "application/json" },

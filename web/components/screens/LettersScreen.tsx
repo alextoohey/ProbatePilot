@@ -5,6 +5,7 @@ import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, Button, Select, Badge } from "@/components/ds";
 import type { EstateProfile } from "@/lib/design/data";
+import { generateLetter } from "@/lib/agentClient";
 
 const I = ExecutorIcons;
 
@@ -44,10 +45,24 @@ Executor, Estate of Robert A. Milligan`;
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [showPdf, setShowPdf] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const markdownRef = React.useRef<HTMLDivElement>(null);
 
-  function generate() {
-    setBusy(true); setDraft("");
-    setTimeout(() => { setDraft(draftText); setBusy(false); }, 900);
+  async function generate() {
+    setBusy(true); setDraft(""); setError(null);
+    try {
+      const res = await generateLetter(type, estate?.id);
+      setDraft(res.draft);
+    } catch {
+      setError("Couldn't generate the letter. Make sure the agent is running on :8000.");
+      setDraft(draftText);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function copyDraft() {
+    navigator.clipboard?.writeText(draft);
   }
 
   function printLetter() {
@@ -57,7 +72,7 @@ Executor, Estate of Robert A. Milligan`;
     document.body.appendChild(f);
     const doc = f.contentWindow!.document;
     doc.open();
-    doc.write('<!DOCTYPE html><html><head><title>' + esc(type) + '</title><style>@page{size:letter;margin:1in;}html,body{margin:0;}body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;color:#1f2933;white-space:pre-wrap;}</style></head><body>' + esc(draft) + '</body></html>');
+    doc.write(`<!DOCTYPE html><html><head><title>${esc(type)}</title><style>@page{size:letter;margin:1in;}html,body{margin:0;}body{font-family:"Times New Roman",serif;font-size:12px;line-height:1.75;color:#1f2933;white-space:pre-wrap;}</style></head><body>${esc(draft)}</body></html>`);
     doc.close();
     f.contentWindow!.focus();
     setTimeout(() => { f.contentWindow!.print(); setTimeout(() => f.remove(), 1500); }, 350);
@@ -99,18 +114,20 @@ Executor, Estate of Robert A. Milligan`;
             <Button variant="primary" fullWidth onClick={generate} leadingIcon={<I.Sparkle size={16} />}>
               {busy ? "Drafting…" : "Draft this letter"}
             </Button>
+            {error ? <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--critical-text)" }}>{error}</p> : null}
             <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--text-muted)", lineHeight: 1.5 }}>
               Drafts cite the relevant California Probate Code section and pull names, dates, and amounts straight from the estate.
             </p>
           </div>
         </Card>
 
-        <Card title="Draft preview" subtitle={draft ? "Review, edit, then print to sign" : "No draft yet"}
+        <Card title="Draft preview" subtitle={draft ? "Review, then print or copy to send" : "No draft yet"}
           headerRight={draft ? <Badge tone="brand">Draft</Badge> : null}
-          footer={draft ? <div style={{ display: "flex", gap: 8 }}><Button variant="secondary" size="sm" onClick={() => navigator.clipboard && navigator.clipboard.writeText(draft)}>Copy</Button><Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button></div> : null}>
+          footer={draft ? <div style={{ display: "flex", gap: 8 }}><Button variant="secondary" size="sm" onClick={copyDraft}>Copy as plain text</Button><Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button></div> : null}>
           {draft ? (
-            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false}
-              style={{ display: "block", width: "100%", boxSizing: "border-box", minHeight: 420, resize: "vertical", margin: 0, whiteSpace: "pre-wrap", fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: 1.65, color: "var(--text-body)", background: "var(--surface-card)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "var(--space-4)", outline: "none" }} />
+            <div ref={markdownRef} style={{ padding: "var(--space-5)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.8, color: "var(--text-body)", whiteSpace: "pre-wrap" }}>
+              {draft}
+            </div>
           ) : (
             <div style={{ padding: "32px 0", textAlign: "center", color: "var(--text-subtle)" }}>
               <I.FileText size={28} color="var(--text-subtle)" />
@@ -134,7 +151,7 @@ Executor, Estate of Robert A. Milligan`;
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ width: "100%", maxWidth: 720, background: "#fff", boxShadow: "var(--shadow-lg)", borderRadius: 2, padding: "72px 80px", boxSizing: "border-box", alignSelf: "flex-start", fontFamily: "var(--font-mono)", fontSize: "13px", lineHeight: 1.75, color: "#1f2933", whiteSpace: "pre-wrap" }}>
+            <div style={{ width: "100%", maxWidth: 720, background: "#fff", boxShadow: "var(--shadow-lg)", borderRadius: 2, padding: "72px 80px", boxSizing: "border-box", alignSelf: "flex-start", fontFamily: "Georgia, serif", fontSize: "13px", lineHeight: 1.75, color: "#1f2933", whiteSpace: "pre-wrap" }}>
               {draft}
             </div>
           </div>

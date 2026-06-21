@@ -79,12 +79,18 @@ ACCEPTED_CONTENT_TYPES = {
 
 def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None:
     """Write structured facts from an extraction back into estate state."""
-    estate = get_estate_state(estate_id)
+    try:
+        estate = get_estate_state(estate_id)
+    except Exception:
+        estate = None
     partial: dict[str, Any] = {}
+
+    existing_assets = estate.assets if estate else []
+    existing_bens = estate.beneficiaries if estate else []
 
     if isinstance(extraction, WillExtraction):
         if extraction.beneficiaries:
-            existing_names = {b.name.lower().strip() for b in estate.beneficiaries}
+            existing_names = {b.name.lower().strip() for b in existing_bens}
             new_bens = [
                 b for b in extraction.beneficiaries
                 if b.name.lower().strip() not in existing_names
@@ -93,7 +99,7 @@ def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None
                 partial["beneficiaries"] = new_bens
 
         if extraction.assets:
-            existing_descs = {a.description.lower().strip() for a in estate.assets}
+            existing_descs = {a.description.lower().strip() for a in existing_assets}
             new_assets = [
                 a for a in extraction.assets
                 if a.description.lower().strip() not in existing_descs
@@ -109,7 +115,7 @@ def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None
         ]
         description = " ".join(p for p in parts if p) or "Bank account"
         existing = next(
-            (a for a in estate.assets
+            (a for a in existing_assets
              if a.type == "bank_account" and extraction.accountLast4
              and extraction.accountLast4 in a.description),
             None,
@@ -128,7 +134,7 @@ def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None
     elif isinstance(extraction, DeedExtraction) and extraction.propertyAddress:
         addr_key = extraction.propertyAddress.lower()[:30]
         existing = next(
-            (a for a in estate.assets
+            (a for a in existing_assets
              if a.type == "real_estate" and addr_key in a.description.lower()),
             None,
         )
