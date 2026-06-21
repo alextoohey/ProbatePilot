@@ -13,6 +13,8 @@ export interface SearchResult {
 export interface ParseDocumentResponse {
   estateId: string;
   extraction: AnyDocumentExtraction;
+  documentType: string;
+  needsTypeSelection: boolean;
   alerts: Alert[];
 }
 

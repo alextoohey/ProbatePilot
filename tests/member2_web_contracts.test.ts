@@ -117,6 +117,8 @@ const parseResponse: ParseDocumentResponse = {
     codicils: [],
     rawChunks: ["Dana Milligan shall serve as executor."],
   },
+  documentType: "will",
+  needsTypeSelection: false,
   alerts: [alert],
 };
 

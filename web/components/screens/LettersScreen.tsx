@@ -5,64 +5,81 @@ import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, Button, Select, Badge } from "@/components/ds";
 import type { EstateProfile } from "@/lib/design/data";
-import { generateLetter } from "@/lib/agentClient";
+import { generateLetter, getEstate } from "@/lib/agentClient";
 
 const I = ExecutorIcons;
 
 type Props = { estate?: EstateProfile };
 
+// Backend-supported letter types (agent/prompts/letters.py). The `value` is the
+// enum the API expects; `label` is what the executor sees.
+const LETTER_TYPES: { value: string; label: string }[] = [
+  { value: "creditor_notice", label: "Creditor notice" },
+  { value: "bank_notification", label: "Bank notification" },
+  { value: "irs_ein_request", label: "IRS EIN request" },
+  { value: "beneficiary_update", label: "Beneficiary update" },
+  { value: "property_transfer", label: "Property transfer" },
+];
+
+// Which letter types are addressed to a specific person/organization, and where
+// to source the candidate recipients from in the estate state.
+const RECIPIENT_SOURCE: Record<string, "creditors" | "beneficiaries"> = {
+  creditor_notice: "creditors",
+  bank_notification: "creditors",
+  beneficiary_update: "beneficiaries",
+};
+
 export function LettersScreen({ estate }: Props) {
-  const draftText = `Dana Milligan, Executor
-Estate of Robert A. Milligan
-1847 Marin Ave, Berkeley, CA 94706
+  const estateId = estate?.id ?? "";
 
-June 20, 2026
-
-UCSF Medical Center
-Attn: Patient Accounts
-
-Re: Notice to Creditors, Estate of Robert A. Milligan
-
-To Whom It May Concern:
-
-I am the duly appointed executor of the Estate of Robert A. Milligan, who passed
-away on June 3, 2026. Letters testamentary were issued to me on June 10, 2026 by
-the Superior Court of California, County of Alameda.
-
-This letter serves as formal notice under California Probate Code §9050 et seq.
-If your organization holds a claim against the estate, you must file it with the
-court and deliver a copy to me on or before the later of (a) four months after
-letters were first issued, or (b) sixty days after this notice was mailed.
-
-Please direct all correspondence regarding this estate to me at the address above.
-
-Sincerely,
-
-Dana Milligan
-Executor, Estate of Robert A. Milligan`;
-
-  const [type, setType] = React.useState("Creditor notice, UCSF Medical Center");
+  const [type, setType] = React.useState(LETTER_TYPES[0].value);
+  const [recipient, setRecipient] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [showPdf, setShowPdf] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showPdf, setShowPdf] = React.useState(false);
+  const [creditors, setCreditors] = React.useState<string[]>([]);
+  const [beneficiaries, setBeneficiaries] = React.useState<string[]>([]);
+  
   const markdownRef = React.useRef<HTMLDivElement>(null);
+  function copyDraft() { navigator.clipboard?.writeText(draft); }
+
+  const typeLabel = LETTER_TYPES.find((t) => t.value === type)?.label ?? type;
+  const recipientSource = RECIPIENT_SOURCE[type];
+  const recipientOptions = recipientSource === "beneficiaries" ? beneficiaries : creditors;
+
+  // Pull the real creditors and beneficiaries so the recipient list reflects
+  // this estate's parsed documents instead of hardcoded names.
+  React.useEffect(() => {
+    if (!estateId) return;
+    let cancelled = false;
+    getEstate(estateId)
+      .then((e) => {
+        if (cancelled) return;
+        setCreditors(e.debts.map((d) => d.creditor).filter(Boolean));
+        setBeneficiaries(e.beneficiaries.map((b) => b.name).filter(Boolean));
+      })
+      .catch(() => {
+        /* leave recipient lists empty; the backend still drafts with a generic recipient */
+      });
+    return () => { cancelled = true; };
+  }, [estateId]);
+
+  // Reset the chosen recipient whenever the letter type (and therefore the
+  // candidate list) changes.
+  React.useEffect(() => { setRecipient(""); }, [type]);
 
   async function generate() {
+    if (!estateId || busy) return;
     setBusy(true); setDraft(""); setError(null);
     try {
-      const res = await generateLetter(type, estate?.id);
+      const res = await generateLetter(type, estateId, recipient || undefined);
       setDraft(res.draft);
-    } catch {
-      setError("Couldn't generate the letter. Make sure the agent is running on :8000.");
-      setDraft(draftText);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "I couldn't draft that letter. Make sure the agent is running, then try again.");
     } finally {
       setBusy(false);
     }
-  }
-
-  function copyDraft() {
-    navigator.clipboard?.writeText(draft);
   }
 
   function printLetter() {
@@ -72,13 +89,13 @@ Executor, Estate of Robert A. Milligan`;
     document.body.appendChild(f);
     const doc = f.contentWindow!.document;
     doc.open();
-    doc.write(`<!DOCTYPE html><html><head><title>${esc(type)}</title><style>@page{size:letter;margin:1in;}html,body{margin:0;}body{font-family:"Times New Roman",serif;font-size:12px;line-height:1.75;color:#1f2933;white-space:pre-wrap;}</style></head><body>${esc(draft)}</body></html>`);
+    doc.write('<!DOCTYPE html><html><head><title>' + esc(typeLabel) + '</title><style>@page{size:letter;margin:1in;}html,body{margin:0;}body{font-family:"Times New Roman",serif;font-size:12px;line-height:1.75;color:#1f2933;white-space:pre-wrap;}</style></head><body>' + esc(draft) + '</body></html>')
     doc.close();
     f.contentWindow!.focus();
     setTimeout(() => { f.contentWindow!.print(); setTimeout(() => f.remove(), 1500); }, 350);
   }
 
-  if (estate && !estate.seeded) {
+  if (estate && !estate.hasDocuments) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "80px 40px", textAlign: "center" }}>
         <span style={{ display: "inline-flex", width: 52, height: 52, borderRadius: "999px", background: "var(--evergreen-100)", color: "var(--evergreen-700)", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
@@ -105,16 +122,17 @@ Executor, Estate of Robert A. Milligan`;
         <Card title="Generate a letter" padded>
           <div style={{ display: "grid", gap: "var(--space-4)" }}>
             <Select label="Letter type" value={type} onChange={(e) => setType(e.target.value)}
-              options={[
-                "Creditor notice, UCSF Medical Center",
-                "Creditor notice, Chase Visa",
-                "Bank notification, Wells Fargo",
-                "Beneficiary update letter",
-              ]} />
-            <Button variant="primary" fullWidth onClick={generate} leadingIcon={<I.Sparkle size={16} />}>
+              options={LETTER_TYPES} />
+            {recipientSource && recipientOptions.length > 0 ? (
+              <Select label="Recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)}
+                options={[{ value: "", label: "Choose a recipient…" }, ...recipientOptions.map((r) => ({ value: r, label: r }))]} />
+            ) : null}
+            <Button variant="primary" fullWidth onClick={generate} disabled={busy} leadingIcon={<I.Sparkle size={16} />}>
               {busy ? "Drafting…" : "Draft this letter"}
             </Button>
-            {error ? <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--critical-text)" }}>{error}</p> : null}
+            {error ? (
+              <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--critical-text)", lineHeight: 1.5 }}>{error}</p>
+            ) : null}
             <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--text-muted)", lineHeight: 1.5 }}>
               Drafts cite the relevant California Probate Code section and pull names, dates, and amounts straight from the estate.
             </p>
@@ -143,7 +161,7 @@ Executor, Estate of Robert A. Milligan`;
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", maxWidth: 720, width: "100%", margin: "0 auto", marginBottom: "var(--space-3)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--paper-50)", fontFamily: "var(--font-sans)" }}>
               <I.FileText size={16} />
-              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{type}.pdf</span>
+              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{typeLabel}.pdf</span>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <Button variant="secondary" size="sm" onClick={() => setShowPdf(false)}>Close</Button>

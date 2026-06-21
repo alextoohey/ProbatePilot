@@ -39,7 +39,7 @@ export type Alert = {
   id: string;
   severity: Severity;
   title: string;
-  daysRemaining: number;
+  daysRemaining?: number | null;
   rule: string;
   body: string;
   actionRequired: string;
@@ -174,7 +174,7 @@ export const DEMO_ESTATE: DemoEstate = {
   ],
   alerts: [
     {
-      id: "al1",
+      id: "alert-creditor-notice",
       severity: "critical",
       title: "Known creditors haven't been notified",
       daysRemaining: 20,
@@ -195,7 +195,7 @@ export const DEMO_ESTATE: DemoEstate = {
       ],
     },
     {
-      id: "al2",
+      id: "alert-de-160-inventory",
       severity: "warning",
       title: "DE-160 Inventory & Appraisal is blocked",
       daysRemaining: 9,
@@ -216,7 +216,7 @@ export const DEMO_ESTATE: DemoEstate = {
       ],
     },
     {
-      id: "al3",
+      id: "alert-final-1040",
       severity: "info",
       title: "Final Form 1040 due April 15, 2027",
       daysRemaining: 299,
@@ -238,7 +238,7 @@ export const DEMO_ESTATE: DemoEstate = {
   ],
   alertsNext: [
     {
-      id: "inv1",
+      id: "alert-de-160-ready",
       severity: "warning",
       title: "File the DE-160 Inventory & Appraisal",
       daysRemaining: 30,
@@ -340,11 +340,15 @@ export type EstateProfile = {
   county: string;
   phase: number;
   seeded: boolean;
+  // True for the demo, or once a real estate has at least one parsed document.
+  // Gates the chat and letters screens; distinct from `seeded`, which drives the
+  // cosmetic demo data.
+  hasDocuments: boolean;
 };
 
 export const ESTATE_PROFILES: EstateProfile[] = [
-  { id: "demo-milligan", deceasedName: "Robert A. Milligan", role: "Executor", relationship: "Father", state: "California", county: "Alameda", phase: 2, seeded: true },
-  { id: "est-reyes", deceasedName: "Gloria Reyes", role: "Co-executor", relationship: "Aunt", state: "California", county: "Contra Costa", phase: 1, seeded: false },
+  { id: "demo-milligan", deceasedName: "Robert A. Milligan", role: "Executor", relationship: "Father", state: "California", county: "Alameda", phase: 2, seeded: true, hasDocuments: true },
+  { id: "est-reyes", deceasedName: "Gloria Reyes", role: "Co-executor", relationship: "Aunt", state: "California", county: "Contra Costa", phase: 1, seeded: false, hasDocuments: false },
 ];
 
 export const GENDER_OPTIONS = ["Female", "Male", "Non-binary", "Prefer not to say"];

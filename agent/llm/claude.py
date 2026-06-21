@@ -14,20 +14,16 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 LOGGER = logging.getLogger(__name__)
 
 DOCUMENT_MODEL = "claude-sonnet-4-6"
-REASONING_MODEL = "claude-opus-4-8"
-CHAT_STREAM_FALLBACK = (
-    "I can still help from the estate state we have. The most urgent next action is to "
-    "notify known creditors and prepare the inventory and appraisal packet. If you are "
-    "asking for a legal judgment, This requires your attorney's input — it involves legal advice."
-)
+REASONING_MODEL = "claude-sonnet-4-6"
 
 _client: anthropic.Anthropic | None = None
 _async_client: anthropic.AsyncAnthropic | None = None
 
+
 class DocumentParseError(RuntimeError):
     """Raised when a document needs a real structured parse and none is available."""
 
-def get_client() -> anthropic.Anthropic | None:
+def _get_client() -> anthropic.Anthropic | None:
     """Return a sync Anthropic client when configured, else None."""
     global _client
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -35,6 +31,10 @@ def get_client() -> anthropic.Anthropic | None:
     if _client is None:
         _client = anthropic.Anthropic()
     return _client
+
+
+def get_client() -> anthropic.Anthropic | None:
+    return _get_client()
 
 
 def get_async_client() -> anthropic.AsyncAnthropic | None:
@@ -54,7 +54,7 @@ async def create_reasoning_message(
     tools: list[dict[str, Any]] | None = None,
     max_tokens: int = 4096,
 ) -> Any:
-    """Call Claude Opus for reasoning/tool use.
+    """Call Claude for reasoning/tool use.
 
     Raises when the client is unavailable so callers can use deterministic fallback.
     """
@@ -87,7 +87,7 @@ async def structured_extract(
     fallback: dict[str, Any] | None = None,
     allow_fallback: bool = True,
 ) -> ModelT:
-    """Extract structured document data with Claude, falling back to deterministic data."""
+    """Extract structured document data with Claude, falling back when allowed."""
     with span(
         "llm.structured_extract",
         action_type="document_parse",
@@ -106,7 +106,7 @@ async def structured_extract(
             set_span_attribute(current_span, "fallback_used", True)
             set_span_attribute(current_span, "fallback_reason", "anthropic_client_unavailable")
             if not allow_fallback:
-                raise DocumentParseError("Structured document extraction did not complete.")
+                raise DocumentParseError("ANTHROPIC_API_KEY is required for this document parse.")
             if fallback is None:
                 raise DocumentParseError("No structured extraction fallback is available.")
             return response_model.model_validate(fallback)
@@ -134,7 +134,7 @@ async def structured_extract(
                     return response_model.model_validate(block.input)
 
             set_span_attribute(current_span, "fallback_reason", "missing_tool_use")
-            failure = DocumentParseError("Structured document extraction did not complete.")
+            failure: Exception = DocumentParseError("Structured document extraction did not complete.")
         except Exception as exc:
             failure = exc
             set_span_error(current_span, exc)
@@ -148,6 +148,7 @@ async def structured_extract(
             raise DocumentParseError("No structured extraction fallback is available.") from failure
         return response_model.model_validate(fallback)
 
+
 async def generate_letter_draft(
     *,
     prompt: str,
@@ -155,7 +156,7 @@ async def generate_letter_draft(
     fallback: str,
     estate_id: str | None = None,
 ) -> str:
-    """Draft a letter with Claude Sonnet, falling back to deterministic text."""
+    """Draft a letter with Claude, falling back to deterministic text."""
     with span(
         "llm.generate_letter",
         estate_id=estate_id,

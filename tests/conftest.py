@@ -28,6 +28,10 @@ def memory_store(monkeypatch: pytest.MonkeyPatch):
 
     redis_client._ESTATES.clear()
     redis_client._VECTORS.clear()
+    redis_client._USERS.clear()
+    redis_client._USER_EMAILS.clear()
+    redis_client._SESSIONS.clear()
+    redis_client._DOC_FILES.clear()
     redis_client._REDIS_CLIENT = None
     redis_client._REDIS_CLOUD_CLIENT = None
     redis_client._VECTOR_CLIENT = None
@@ -36,3 +40,7 @@ def memory_store(monkeypatch: pytest.MonkeyPatch):
 
     redis_client._ESTATES.clear()
     redis_client._VECTORS.clear()
+    redis_client._USERS.clear()
+    redis_client._USER_EMAILS.clear()
+    redis_client._SESSIONS.clear()
+    redis_client._DOC_FILES.clear()

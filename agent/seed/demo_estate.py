@@ -58,7 +58,9 @@ DEMO_ESTATE = EstateState(
         UploadedDocument(id="doc-seed-deed", fileName="Grant Deed, 1847 Marin Ave.pdf", documentType="deed"),
     ],
     tasks=[
-        Task(id="task-order-death-certificates", title="Order 12 certified death certificates", phase=1),
+        Task(id="task-file-petition", title="File probate petition", status="done", phase=1),
+        Task(id="task-order-death-certificates", title="Order 12 certified death certificates", status="done", phase=1),
+        Task(id="task-obtain-ein", title="Obtain estate EIN from the IRS", status="done", phase=1),
         Task(id="task-notify-creditors", title="Notify all known creditors by certified mail", phase=2),
         Task(id="task-inventory-appraisal", title="Prepare DE-160 Inventory and Appraisal", phase=2),
     ],
@@ -68,4 +70,3 @@ DEMO_ESTATE = EstateState(
 
 def build_demo_estate() -> EstateState:
     return deepcopy(DEMO_ESTATE)
-

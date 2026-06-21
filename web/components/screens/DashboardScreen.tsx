@@ -3,28 +3,63 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, StatBlock, Alert, Badge, ProgressSteps, Button, Avatar } from "@/components/ds";
-import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary } from "@/lib/design/data";
+import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary, type Alert as DesignAlert } from "@/lib/design/data";
+import { getEstate } from "@/lib/agentClient";
 import { BeneficiaryModal } from "./BeneficiaryModal";
 import type { Alert as BackendAlert, EstateState } from "@/types";
+
+function formatLongDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
 
 type Props = {
   estate?: EstateProfile;
   completedIds?: string[];
   onOpenStep?: (id: string) => void;
   onGoDocuments?: () => void;
-  liveAlerts?: BackendAlert[];
+  liveAlerts?: BackendAlert[] | null;
   liveEstate?: EstateState | null;
+  liveAlertsFailed?: boolean;
 };
 
-export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments, liveAlerts, liveEstate }: Props) {
+export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments, liveAlerts = null, liveEstate, liveAlertsFailed = false }: Props) {
   const E = DEMO_ESTATE;
   const fmt = fmtMoney;
   const I = ExecutorIcons;
   const [benList, setBenList] = React.useState<Beneficiary[]>(E.beneficiaries.map((b) => ({ ...b })));
   const [openBenId, setOpenBenId] = React.useState<string | null>(null);
 
-  // A newly created estate has no documents yet, show onboarding.
-  if (estate && !estate.seeded) {
+  // Real (non-demo) estates load their live state from the agent.
+  const isReal = !!estate && !estate.seeded;
+  const [real, setReal] = React.useState<EstateState | null>(null);
+  const [loadingReal, setLoadingReal] = React.useState(isReal);
+
+  React.useEffect(() => {
+    if (!isReal || !estate) return;
+    let cancelled = false;
+    setLoadingReal(true);
+    getEstate(estate.id)
+      .then((e) => { if (!cancelled) setReal(e); })
+      .catch(() => { if (!cancelled) setReal(null); })
+      .finally(() => { if (!cancelled) setLoadingReal(false); });
+    return () => { cancelled = true; };
+  }, [isReal, estate]);
+
+  // A newly created estate has no documents yet, show onboarding; once any
+  // document is parsed, show the live estate built from real data.
+  if (isReal && estate) {
+    if (loadingReal) {
+      return (
+        <div style={{ display: "flex", height: "100%", minHeight: 320, alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)" }}>
+          Loading the estate…
+        </div>
+      );
+    }
+    if (real && real.documents.length > 0) {
+      return <RealDashboard real={real} />;
+    }
     return (
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "48px 40px", display: "grid", gap: "var(--space-8)" }}>
         <header>
@@ -59,10 +94,23 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
 
   const done = new Set(completedIds);
 
-  const usingLive = liveAlerts && liveAlerts.length > 0;
-  const allAlerts = usingLive
-    ? liveAlerts!.map((a) => ({ ...a, steps: [] as string[], whatYouNeed: [] as string[], daysRemaining: a.daysRemaining ?? 0 }))
-    : [...E.alerts, ...(E.alertsNext || [])];
+  const guidanceAlerts = [...E.alerts, ...(E.alertsNext || [])];
+  const liveAlertsLoading = estate?.seeded && liveAlerts === null;
+  const allAlerts: DesignAlert[] = liveAlerts === null
+    ? []
+    : liveAlerts.length > 0
+      ? liveAlerts.map((a) => {
+        const guidance = guidanceAlerts.find((g) => g.id === a.id);
+        return {
+          ...a,
+          steps: guidance?.steps || [],
+          whatYouNeed: guidance?.whatYouNeed || [],
+          daysRemaining: a.daysRemaining ?? undefined,
+        };
+      })
+      : estate?.seeded
+        ? []
+        : guidanceAlerts;
   const open = allAlerts.filter((a) => !done.has(a.id) && !(a as BackendAlert).dismissed);
   const completed = allAlerts.filter((a) => done.has(a.id) || !!(a as BackendAlert).dismissed);
   const justAdvanced = false;
@@ -130,14 +178,30 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
           </div>
         ) : null}
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
-          {open.map((a) => (
-            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining}
+          {liveAlertsLoading ? (
+            <Card tint padded>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)" }}>
+                <I.Bell size={18} color="var(--text-subtle)" />
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Checking California probate deadlines...</span>
+              </div>
+            </Card>
+          ) : null}
+          {liveAlertsFailed ? (
+            <Card tint padded>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--warning-text)" }}>
+                <I.Bell size={18} color="var(--warning-accent)" />
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>DeadlineAgent alerts could not be loaded. Start the Python agent and refresh.</span>
+              </div>
+            </Card>
+          ) : null}
+          {!liveAlertsLoading && !liveAlertsFailed && open.map((a) => (
+            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining ?? undefined}
               actionRequired={a.actionRequired}
               onOpen={() => onOpenStep && onOpenStep(a.id)} actionLabel="View steps">
               {a.body}
             </Alert>
           ))}
-          {open.length === 0 ? (
+          {!liveAlertsLoading && !liveAlertsFailed && open.length === 0 ? (
             <Card tint padded>
               <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--success-text)" }}>
                 <I.CheckCircle size={20} color="var(--success-accent)" />
@@ -205,6 +269,105 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
         onCancel={() => setOpenBenId(null)}
         onSave={(nb) => { setBenList((cur) => cur.map((b) => (b.id === nb.id ? nb : b))); setOpenBenId(null); }}
       />
+    </div>
+  );
+}
+
+// Live dashboard built entirely from the agent's estate state. Shown for real
+// (non-demo) estates once at least one document has been parsed. Unlike the demo
+// view it never falls back to seed data, so it only ever shows this estate.
+function RealDashboard({ real }: { real: EstateState }) {
+  const I = ExecutorIcons;
+  const fmt = fmtMoney;
+  const phases = DEMO_ESTATE.phases;
+
+  const assetTotal = real.assets.reduce((s, a) => s + (a.estimatedValue ?? a.appraisedValue ?? 0), 0);
+  const appraisedCount = real.assets.filter((a) => a.appraised).length;
+  const debtTotal = real.debts.reduce((s, d) => s + d.amount, 0);
+  const notifiedCreditors = real.debts.filter((d) => d.notified).length;
+  const netPosition = assetTotal - debtTotal;
+
+  const phaseNum = Math.min(Math.max(real.phase, 1), phases.length);
+  const phaseName = phases[phaseNum - 1] ?? "In progress";
+  const openAlerts = real.alerts.filter((a) => !a.dismissed);
+
+  const taskTone = { done: "success", todo: "neutral", in_progress: "brand", blocked: "warning" } as const;
+  const taskLabel = { done: "Done", todo: "To do", in_progress: "In progress", blocked: "Blocked" } as const;
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px 40px", display: "grid", gap: "var(--space-8)" }}>
+      <header>
+        <p style={{ margin: 0, fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "var(--text-muted)" }}>Executor dashboard</p>
+        <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", color: "var(--text-strong)" }}>
+          The estate of {real.deceasedName}
+        </h1>
+        <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
+          Letters testamentary issued {formatLongDate(real.appointmentDate)}. Built from your documents as you add them.
+        </p>
+      </header>
+
+      <Card padded={true}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-6)", marginBottom: "var(--space-6)" }}>
+          <StatBlock label="Assets" value={fmt(assetTotal)} sub={`${real.assets.length} items, ${appraisedCount} appraised`} />
+          <StatBlock label="Debts" value={fmt(debtTotal)} tone="critical" sub={`${real.debts.length} creditors, ${notifiedCreditors} notified`} />
+          <StatBlock label="Beneficiaries" value={String(real.beneficiaries.length)} sub={real.beneficiaries.map((b) => b.name.split(" ")[0]).join(", ") || "None yet"} />
+          <StatBlock label="Phase" value={`${phaseNum} of 6`} tone="brand" sub={phaseName} />
+        </div>
+        <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-6)" }}>
+          <ProgressSteps current={phaseNum - 1} steps={phases} />
+        </div>
+      </Card>
+
+      <section>
+        <h2 style={{ margin: "0 0 var(--space-2)", fontFamily: "var(--font-display)", fontSize: "var(--text-xl)", fontWeight: 600, color: "var(--text-strong)" }}>What needs your attention</h2>
+        <p style={{ margin: "0 0 var(--space-4)", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>Surfaced by the DeadlineAgent from your estate and California probate rules.</p>
+        <div style={{ display: "grid", gap: "var(--space-3)" }}>
+          {openAlerts.map((a) => (
+            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining ?? undefined} actionRequired={a.actionRequired}>
+              {a.body}
+            </Alert>
+          ))}
+          {openAlerts.length === 0 ? (
+            <Card tint padded>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--success-text)" }}>
+                <I.CheckCircle size={20} color="var(--success-accent)" />
+                <span style={{ fontWeight: 600 }}>Nothing needs you right now. I'll alert you the moment something does.</span>
+              </div>
+            </Card>
+          ) : null}
+        </div>
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "var(--space-6)", alignItems: "start" }}>
+        <Card title="Tasks" subtitle="Ordered by what unblocks the estate" padded={false}>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {real.tasks.length === 0 ? (
+              <li style={{ padding: "18px 20px", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>No tasks yet. They appear as documents are parsed.</li>
+            ) : real.tasks.map((t, i) => (
+              <li key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
+                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
+                <Badge tone={taskTone[t.status]}>{taskLabel[t.status]}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card title="Beneficiaries" subtitle="Per the will" padded={false}>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {real.beneficiaries.length === 0 ? (
+              <li style={{ padding: "18px 20px", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>None identified yet.</li>
+            ) : real.beneficiaries.map((b, i) => (
+              <li key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
+                <Avatar name={b.name} size="sm" />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{b.name}</span>
+                </span>
+                {b.share ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{b.share}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </section>
     </div>
   );
 }

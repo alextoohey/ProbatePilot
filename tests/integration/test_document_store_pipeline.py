@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from llm.embeddings import embed_query
+from schemas.documents import BankStatementExtraction
 from store.redis_client import get_estate_state, semantic_search
 
 
@@ -25,7 +26,28 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(main.app)
 
 
-def test_bank_statement_upload_updates_estate_assets_documents_and_vectors(client: TestClient) -> None:
+def test_bank_statement_upload_updates_estate_assets_documents_and_vectors(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import main
+
+    async def fake_parse_document_text(_text: str, forced_type: str | None = None) -> BankStatementExtraction:
+        assert forced_type is None
+        return BankStatementExtraction(
+            documentType="bank_statement",
+            confidence=0.95,
+            institution="Wells Fargo",
+            accountLast4="4412",
+            accountType="checking",
+            balance=38240,
+            statementDate=None,
+            notableTransactions=[],
+            rawChunks=["Wells Fargo checking statement for account 4412 with balance 38240."],
+        )
+
+    monkeypatch.setattr(main, "parse_document_text", fake_parse_document_text)
+
     response = client.post(
         "/parse-document",
         data={"estateId": "demo-milligan"},
@@ -91,7 +113,7 @@ def test_deed_upload_for_new_estate_creates_state_and_keeps_vectors(client: Test
 
 def test_document_vectors_are_scoped_to_their_estate(client: TestClient) -> None:
     for estate_id, filename, body in (
-        ("estate-a", "a-will.txt", b"Last Will and Testament. Dana Milligan shall serve as executor."),
+        ("estate-a", "a-deed.txt", b"Grant Deed for 1847 Marin Ave. APN 123-456. Legal description attached."),
         ("estate-b", "b-deed.txt", b"Grant Deed for 1847 Marin Ave. APN 123-456. Legal description attached."),
     ):
         response = client.post(
@@ -108,7 +130,7 @@ def test_document_vectors_are_scoped_to_their_estate(client: TestClient) -> None
     assert estate_b_matches
     assert all(match.estateId == "estate-a" for match in estate_a_matches)
     assert all(match.estateId == "estate-b" for match in estate_b_matches)
-    assert {match.source for match in estate_a_matches} == {"a-will.txt"}
+    assert {match.source for match in estate_a_matches} == {"a-deed.txt"}
     assert {match.source for match in estate_b_matches} == {"b-deed.txt"}
 
 

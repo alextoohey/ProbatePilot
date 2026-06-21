@@ -16,9 +16,30 @@ import {
 } from "@/lib/design/data";
 import type { Asset as EstateAsset } from "@/types/estate";
 
-type Props = { estate?: EstateProfile | null };
+type Props = { estate?: EstateProfile | null; onDocumentsChanged?: () => void };
 
-type Doc = { id: string; name: string; type: string; parsed: boolean };
+type Doc = { id: string; name: string; type: string; documentType: string; parsed: boolean };
+
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
+
+// Offered when auto-detection can't identify a document and the user picks the
+// type manually. Values are stored verbatim as the document's documentType.
+const DOC_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "will", label: "Will or trust" },
+  { value: "death_certificate", label: "Death certificate" },
+  { value: "letters_testamentary", label: "Letters testamentary" },
+  { value: "bank_statement", label: "Bank or brokerage statement" },
+  { value: "deed", label: "Property deed" },
+  { value: "mortgage_statement", label: "Mortgage or loan statement" },
+  { value: "vehicle_title", label: "Vehicle title" },
+  { value: "de160_inventory", label: "DE-160 inventory & appraisal" },
+  { value: "creditor_notice", label: "Creditor notice" },
+  { value: "debt_payment_receipt", label: "Debt payment receipt" },
+  { value: "distribution_receipt", label: "Distribution receipt" },
+  { value: "tax_return", label: "Tax return" },
+  { value: "insurance_policy", label: "Insurance policy" },
+  { value: "other", label: "Other / not listed" },
+];
 
 function documentTypeLabel(documentType: string) {
   return documentType.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -58,8 +79,91 @@ function fromEstateAsset(asset: EstateAsset): Asset {
   };
 }
 
+function docsFromEstateDocuments(documents: { id: string; fileName: string; documentType: string }[]): Doc[] {
+  return documents.map((d) => ({
+    id: d.id,
+    name: d.fileName,
+    type: documentTypeLabel(d.documentType),
+    documentType: d.documentType,
+    parsed: true,
+  }));
+}
+
+function seedDocs(): Doc[] {
+  return [
+    { id: "doc-seed-will", name: "Last Will & Testament.pdf", type: "Will", documentType: "will", parsed: true },
+    { id: "doc-seed-bank", name: "Wells Fargo statement, May.pdf", type: "Bank Statement", documentType: "bank_statement", parsed: true },
+    { id: "doc-seed-deed", name: "Grant Deed, 1847 Marin Ave.pdf", type: "Deed", documentType: "deed", parsed: true },
+  ];
+}
+
+const CHECKLIST_ID_BY_DOC_TYPE: Record<string, string> = {
+  will: "will",
+  bank_statement: "bank",
+  deed: "deed",
+  death_certificate: "death-cert",
+  tax_return: "tax",
+  mortgage_statement: "mortgage",
+  insurance_policy: "insurance",
+  vehicle_title: "vehicle",
+};
+
+function checklistIdForDocumentType(documentType: string): string | null {
+  return CHECKLIST_ID_BY_DOC_TYPE[documentType] ?? null;
+}
+
+function parseProgressLabel(progress: number) {
+  if (progress >= 100) return "Document parsed";
+  if (progress >= 78) return "Updating the estate graph";
+  if (progress >= 48) return "Extracting assets, debts, and people";
+  if (progress >= 20) return "Reading pages and classifying the document";
+  return "Uploading securely";
+}
+
+function ParseProgress({
+  fileName,
+  progress,
+}: {
+  fileName: string | null;
+  progress: number;
+}) {
+  const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+  return (
+    <div style={{ maxWidth: 460, margin: "18px auto 0", textAlign: "left" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {fileName || "Document"}
+          </p>
+          <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{parseProgressLabel(clamped)}</p>
+        </div>
+        <span style={{ flex: "none", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)" }}>{clamped}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Document parsing progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={clamped}
+        style={{ height: 8, borderRadius: "var(--radius-full)", background: "var(--surface-sunken)", overflow: "hidden", boxShadow: "inset 0 0 0 1px rgba(203,213,225,0.7)" }}
+      >
+        <span
+          style={{
+            display: "block",
+            width: `${clamped}%`,
+            height: "100%",
+            borderRadius: "inherit",
+            background: "linear-gradient(90deg, var(--evergreen-500), var(--evergreen-700))",
+            transition: "width 420ms cubic-bezier(0.2, 0, 0, 1)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Documents, drop zone + the live estate graph built from parsed documents.
-export function UploadScreen({ estate }: Props) {
+export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   const I = ExecutorIcons;
   const E = DEMO_ESTATE;
   const fmt = fmtMoney;
@@ -70,36 +174,78 @@ export function UploadScreen({ estate }: Props) {
   const [docs, setDocs] = React.useState<Doc[]>([]);
   const [drag, setDrag] = React.useState(false);
   const [parsing, setParsing] = React.useState(false);
+  const [parseProgress, setParseProgress] = React.useState(0);
+  const [parsingFileName, setParsingFileName] = React.useState<string | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
+  // Set when auto-detection fails: holds the file awaiting a manual type choice.
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [pendingType, setPendingType] = React.useState<string>(DOC_TYPE_OPTIONS[0].value);
   const [assets, setAssets] = React.useState<Asset[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const parseDoneTimer = React.useRef<number | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
     getEstate(estateId).then((e) => {
+      if (cancelled) return;
       setAssets(e.assets.map(fromEstateAsset));
-      setDocs(e.documents.map((d) => ({
-        id: d.id,
-        name: d.fileName,
-        type: documentTypeLabel(d.documentType),
-        parsed: true,
-      })));
+      setDocs(docsFromEstateDocuments(e.documents));
     }).catch(() => {
-      setAssets(E.assets.map((a) => ({ ...a })));
+      if (cancelled) return;
+      setAssets(seeded ? E.assets.map((a) => ({ ...a })) : []);
+      setDocs(seeded ? seedDocs() : []);
     });
-  }, [estateId]);
+    return () => { cancelled = true; };
+  }, [estateId, seeded, E.assets]);
   const [draftRow, setDraftRow] = React.useState<Asset | null>(null);
   const [naSet, setNaSet] = React.useState<string[]>([]);
   const [openDoc, setOpenDoc] = React.useState<Doc | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const blobUrlMap = React.useRef<Map<string, string>>(new Map());
+
+  React.useEffect(() => {
+    const map = blobUrlMap.current;
+    return () => { map.forEach((url) => URL.revokeObjectURL(url)); };
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (parseDoneTimer.current !== null) window.clearTimeout(parseDoneTimer.current);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!parsing) return;
+    const timer = window.setInterval(() => {
+      setParseProgress((current) => {
+        if (current < 18) return current + 5;
+        if (current < 48) return current + 4;
+        if (current < 78) return current + 2.5;
+        if (current < 94) return current + 0.8;
+        return current;
+      });
+    }, 420);
+    return () => window.clearInterval(timer);
+  }, [parsing]);
+
+  // Persistent URL for the original file, served by the agent from Redis. The
+  // seeded demo's documents have no stored bytes, so they fall back to a sample.
+  function fileUrl(d: Doc) {
+    return `/api/agent/document/${encodeURIComponent(estateId)}/${encodeURIComponent(d.id)}`;
+  }
 
   function downloadDoc(d: Doc) {
-    const body = "EXECUTOR AI — DOCUMENT EXPORT\n\nFile: " + d.name + "\nType: " + d.type + "\nEstate: " + (estate ? estate.deceasedName : E.deceasedName) + "\nStatus: Parsed\n\n(This is a sample export generated by the Executor AI prototype.)\n";
-    const blob = new Blob([body], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = d.name.replace(/\.[a-z]+$/i, "") + ".txt";
+    if (!seeded) {
+      a.href = fileUrl(d);
+      a.download = d.name;
+    } else {
+      const body = "EXECUTOR AI — DOCUMENT EXPORT\n\nFile: " + d.name + "\nType: " + d.type + "\nEstate: " + (estate ? estate.deceasedName : E.deceasedName) + "\nStatus: Parsed\n\n(This is a sample export generated by the Executor AI prototype.)\n";
+      const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
+      a.href = url; a.download = d.name.replace(/\.[a-z]+$/i, "") + ".txt";
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function startEdit(a: Asset) { setEditingId(a.id); setDraftRow({ ...a, fields: (a.fields || []).map((f) => ({ ...f })) }); }
@@ -133,32 +279,71 @@ export function UploadScreen({ estate }: Props) {
   }
   function deleteAsset(id: string) { setAssets((cur) => cur.filter((a) => a.id !== id)); if (editingId === id) cancelEdit(); }
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, documentType?: string) {
     setUploadError(null);
+    if (parseDoneTimer.current !== null) {
+      window.clearTimeout(parseDoneTimer.current);
+      parseDoneTimer.current = null;
+    }
+    setParsingFileName(file.name);
+    setParseProgress(6);
     setParsing(true);
+    let parsed = false;
     try {
-      const parsed = await parseDocument(file, estateId);
-      setDocs((current) => [
-        ...current,
-        {
-          id: `doc-${Date.now()}-${file.name}`,
-          name: file.name,
-          type: documentTypeLabel(parsed.extraction.documentType),
-          parsed: true,
-        },
-      ]);
+      const result = await parseDocument(file, estateId, documentType);
+      // Auto-detection failed and we have no manual choice yet — prompt for the type.
+      if (result.needsTypeSelection) {
+        setPendingFile(file);
+        setPendingType(DOC_TYPE_OPTIONS[0].value);
+        return;
+      }
+      setPendingFile(null);
       const refreshed = await getEstate(estateId);
+      setDocs(docsFromEstateDocuments(refreshed.documents));
       setAssets(refreshed.assets.map(fromEstateAsset));
+      const newDoc = refreshed.documents.find((d) => d.fileName === file.name);
+      if (newDoc) {
+        blobUrlMap.current.set(newDoc.id, URL.createObjectURL(file));
+      }
+      parsed = true;
+      setParseProgress(100);
+      // Let the shell re-evaluate this estate so chat/letters unlock.
+      onDocumentsChanged?.();
     } catch (error) {
       console.error(error);
       setUploadError(error instanceof Error ? error.message : "Couldn't read that document. Please try again.");
-    } finally {
       setParsing(false);
+      setParsingFileName(null);
+      setParseProgress(0);
+    } finally {
+      if (parsed) {
+        parseDoneTimer.current = window.setTimeout(() => {
+          setParsing(false);
+          setParsingFileName(null);
+          setParseProgress(0);
+          parseDoneTimer.current = null;
+        }, 650);
+      }
       if (inputRef.current) inputRef.current.value = "";
     }
   }
 
+  function confirmPendingType() {
+    if (!pendingFile) return;
+    void uploadFile(pendingFile, pendingType);
+  }
+
+  function cancelPendingType() {
+    setPendingFile(null);
+    setUploadError(null);
+  }
+
   const assetIcon: Record<string, typeof I.Home> = { Home: I.Home, Bank: I.Bank, Car: I.Car };
+  const uploadedChecklistIds = new Set(
+    docs
+      .map((doc) => checklistIdForDocumentType(doc.documentType))
+      .filter((id): id is string => Boolean(id)),
+  );
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "36px 40px", display: "grid", gap: "var(--space-8)" }}>
@@ -178,6 +363,11 @@ export function UploadScreen({ estate }: Props) {
           if (parsing) return;
           const file = e.dataTransfer.files?.[0];
           if (file) void uploadFile(file);
+        }}
+        onClick={(e) => {
+          if (e.target === inputRef.current) return;
+          e.preventDefault();
+          if (!parsing) inputRef.current?.click();
         }}
         style={{
           display: "block", textAlign: "center", cursor: parsing ? "default" : "pointer", padding: "44px 24px",
@@ -202,16 +392,52 @@ export function UploadScreen({ estate }: Props) {
         <div style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-strong)" }}>
           {parsing ? "Reading the document…" : "Drop a document, or click to upload"}
         </div>
-        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or plain text file</div>
+        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or text. Saved after parsing succeeds</div>
+        {parsing ? <ParseProgress fileName={parsingFileName} progress={parseProgress} /> : null}
         {uploadError ? (
           <div style={{ fontSize: "var(--text-sm)", color: "var(--critical-text)", marginTop: 10 }}>{uploadError}</div>
         ) : null}
       </label>
 
+      {pendingFile ? (
+        <div style={{
+          borderRadius: "var(--radius-lg)", border: "1.5px solid var(--border-strong)",
+          background: "var(--surface-card)", padding: "20px 22px", display: "grid", gap: 12,
+        }}>
+          <div>
+            <div style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-strong)" }}>
+              We couldn&apos;t identify this document
+            </div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>
+              Tell us what <strong>{pendingFile.name}</strong> is so we can file it correctly.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select
+              value={pendingType}
+              onChange={(e) => setPendingType(e.target.value)}
+              disabled={parsing}
+              style={{
+                flex: "1 1 240px", minWidth: 0, padding: "9px 12px", borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border-strong)", background: "var(--surface-card)",
+                fontSize: "var(--text-sm)", color: "var(--text-strong)", cursor: "pointer", appearance: "none",
+              }}>
+              {DOC_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Button onClick={confirmPendingType} disabled={parsing}>
+              {parsing ? "Saving…" : "Save document"}
+            </Button>
+            <Button variant="ghost" onClick={cancelPendingType} disabled={parsing}>Cancel</Button>
+          </div>
+        </div>
+      ) : null}
+
       <Card title="What to upload" subtitle="Required documents first, then optional ones you only need if they apply to this estate" padded={false}>
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {(DOC_CHECKLIST || []).map((d, i) => {
-            const up = seeded && d.uploaded;
+            const up = uploadedChecklistIds.has(d.id) || (seeded && docs.length === 0 && d.uploaded);
             const na = naSet.includes(d.id);
             const muted = na;
             return (
@@ -376,12 +602,25 @@ export function UploadScreen({ estate }: Props) {
               <Badge tone="success">Parsed</Badge>
             </div>
             <div style={{ padding: "var(--space-6)", background: "var(--surface-sunken)" }}>
-              <div style={{ background: "var(--paper-0)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-sm)", padding: "32px 28px", minHeight: 260 }}>
-                <div style={{ height: 10, width: "55%", background: "var(--ink-200)", borderRadius: 3, marginBottom: 18 }} />
-                {[88, 96, 72, 90, 0, 84, 94, 60].map((w, i) => (
-                  <div key={i} style={{ height: 8, width: w ? w + "%" : "40%", background: w ? "var(--paper-300)" : "transparent", borderRadius: 3, margin: "10px 0" }} />
-                ))}
-              </div>
+              {blobUrlMap.current.has(openDoc.id) ? (
+                // Just-uploaded this session: instant preview from the in-memory blob.
+                <iframe
+                  src={blobUrlMap.current.get(openDoc.id)}
+                  title={openDoc.name}
+                  style={{ display: "block", width: "100%", height: 420, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--paper-0)" }}
+                />
+              ) : !seeded ? (
+                // Real estate: the original file is persisted by the agent in Redis.
+                IMAGE_EXT.test(openDoc.name) ? (
+                  <img src={fileUrl(openDoc)} alt={openDoc.name} style={{ display: "block", maxWidth: "100%", margin: "0 auto", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-sm)" }} />
+                ) : (
+                  <iframe src={fileUrl(openDoc)} title={openDoc.name} style={{ display: "block", width: "100%", height: 420, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--paper-0)" }} />
+                )
+              ) : (
+                <div style={{ background: "var(--paper-0)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-sm)", padding: "32px 28px", minHeight: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--text-muted)", textAlign: "center" }}>Preview only available for documents uploaded in this session.</p>
+                </div>
+              )}
               <p style={{ margin: "14px 2px 0", fontSize: "var(--text-xs)", color: "var(--text-muted)", textAlign: "center" }}>Preview of the original document. Download to view the full file.</p>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)", padding: "var(--space-4) var(--space-5)", borderTop: "1px solid var(--border-subtle)", background: "var(--bg-raised)" }}>

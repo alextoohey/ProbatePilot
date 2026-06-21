@@ -27,7 +27,7 @@ export function CreateEstateModal({ open, onCancel, onCreate }: Props) {
       deceasedName: f.deceasedName.trim(),
       role: f.role, relationship: f.relationship,
       state: f.state, county: f.county.trim() || "Not set",
-      phase: 1, seeded: false,
+      phase: 1, seeded: false, hasDocuments: false,
     });
   }
 

@@ -5,12 +5,16 @@ import { join } from "node:path";
 import {
   generateLetter,
   getEstate,
+  getMe,
+  login,
+  logout,
   openChatStream,
   parseDocument,
+  register,
   runDeadlineAgent,
   seedEstate,
 } from "../web/lib/agentClient";
-import type { Alert, EstateState } from "../web/types";
+import type { Alert, EstateState, PublicUser } from "../web/types";
 
 const alert: Alert = {
   id: "alert-creditors",
@@ -61,6 +65,18 @@ const estate: EstateState = {
   updatedAt: "2026-06-20T00:00:00.000Z",
 };
 
+const user: PublicUser = {
+  id: "user-dana",
+  name: "Dana Milligan",
+  email: "dana@example.com",
+  phone: "555-1212",
+  relationship: "Daughter",
+  state: "California",
+  county: "Alameda",
+  estateIds: ["demo-milligan"],
+  createdAt: "2026-06-20T00:00:00.000Z",
+};
+
 type FetchCall = {
   input: string | URL | Request;
   init?: RequestInit;
@@ -91,6 +107,53 @@ function resetFetch(payloads: unknown[] = []) {
 }
 
 async function main() {
+  resetFetch([{ user, estate }]);
+  const registered = await register({
+    name: "Dana Milligan",
+    email: "dana@example.com",
+    password: "correct horse battery staple",
+    phone: "555-1212",
+    deceasedName: "Robert A. Milligan",
+    dateOfDeath: "2026-06-03",
+    relationship: "Daughter",
+    state: "California",
+    county: "Alameda",
+    hasWill: "yes",
+  });
+  assert.equal(calls[0].input, "/api/auth/register");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+    name: "Dana Milligan",
+    email: "dana@example.com",
+    password: "correct horse battery staple",
+    phone: "555-1212",
+    deceasedName: "Robert A. Milligan",
+    dateOfDeath: "2026-06-03",
+    relationship: "Daughter",
+    state: "California",
+    county: "Alameda",
+    hasWill: "yes",
+  });
+  assert.equal(registered.user.email, "dana@example.com");
+  assert.equal(registered.estate?.id, "demo-milligan");
+
+  resetFetch([{ user }]);
+  const loggedIn = await login({ email: "dana@example.com", password: "correct horse battery staple" });
+  assert.equal(calls[0].input, "/api/auth/login");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.equal(loggedIn.user.id, "user-dana");
+
+  resetFetch([{ user, estates: [estate] }]);
+  const me = await getMe();
+  assert.equal(calls[0].input, "/api/auth/me");
+  assert.equal(calls[0].init?.cache, "no-store");
+  assert.equal(me?.estates[0].id, "demo-milligan");
+
+  resetFetch([{}]);
+  await logout();
+  assert.equal(calls[0].input, "/api/auth/logout");
+  assert.equal(calls[0].init?.method, "POST");
+
   resetFetch([{ estate, alerts: [alert] }]);
   const seeded = await seedEstate();
   assert.equal(calls[0].input, "/api/agent/seed");
@@ -124,6 +187,8 @@ async function main() {
         notableTransactions: [],
         rawChunks: ["Wells Fargo checking statement account 4412."],
       },
+      documentType: "bank_statement",
+      needsTypeSelection: false,
       alerts: [alert],
     },
   ]);
@@ -174,6 +239,8 @@ async function main() {
         confidence: 0.8,
         rawChunks: [],
       },
+      documentType: "bank_statement",
+      needsTypeSelection: false,
       alerts: [],
     },
   ]);
