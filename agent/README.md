@@ -34,9 +34,13 @@ Start a Phoenix server on `http://localhost:6006`, or configure Phoenix Cloud in
 PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
 PHOENIX_PROJECT_NAME=executor-ai-agent
 PHOENIX_API_KEY=  # required only when the Phoenix endpoint requires authentication
+PHOENIX_CAPTURE_LLM_CONTENT=true
 ```
 
-The example environment hides estate inputs, outputs, and message content by default.
+The demo configuration captures LLM prompts, tool calls, and completions so they are
+inspectable in Phoenix. Set `PHOENIX_CAPTURE_LLM_CONTENT=false` when estate content
+must be redacted. This explicit setting takes precedence over ambient
+`OPENINFERENCE_HIDE_*` variables when the service initializes its instrumentors.
 The collector setting accepts either a Phoenix base URL or a full `/v1/traces` URL.
 After starting the service, `GET /health` reports whether Phoenix and both SDK
 instrumentors initialized successfully.
