@@ -46,14 +46,24 @@ function humanList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
+// Document types that carry no useful name — skip them in the greeting rather
+// than telling the executor we read an "unknown".
+const UNKNOWN_DOC_TYPES = new Set(["unknown", "unknown_document", "other", ""]);
+
 // Build the opening message from the real estate: who the executor is, who died,
-// and which documents have actually been parsed.
+// and which named documents have actually been parsed.
 function buildGreeting(deceasedName: string, executorName?: string | null, documentTypes: string[] = []): string {
   const hello = executorName ? `Hi ${firstName(executorName)}, ` : "Hi there, ";
   const tail = `Ask me anything about ${firstName(deceasedName)}'s estate, or I can tell you the most urgent thing to handle.`;
-  if (documentTypes.length === 0) return `${hello}${tail}`;
-  const docs = humanList(documentTypes.map((t) => t.replace(/_/g, " ")));
-  return `${hello}I've read ${docs}. ${tail}`;
+  const known = Array.from(
+    new Set(
+      documentTypes
+        .map((t) => (t || "").trim().toLowerCase())
+        .filter((t) => !UNKNOWN_DOC_TYPES.has(t)),
+    ),
+  ).map((t) => t.replace(/_/g, " "));
+  if (known.length === 0) return `${hello}${tail}`;
+  return `${hello}I've read the ${humanList(known)}. ${tail}`;
 }
 
 export function ChatScreen({ estate }: Props) {
