@@ -10,7 +10,7 @@ DEMO_ESTATE = EstateState(
     deceasedName="Robert A. Milligan",
     dateOfDeath="2026-06-03",
     appointmentDate="2026-06-10",
-    executor=Executor(name="Dana Milligan", email="dana@demo.com"),
+    executor=Executor(name="Dana Milligan", email="spc.chuzz@gmail.com"),
     assets=[
         Asset(
             id="asset-real-estate-berkeley",
