@@ -7,8 +7,8 @@ import { ExecutorIcons } from "@/lib/design/icons";
 import { Avatar, Button } from "@/components/ds";
 import { Markdown } from "@/components/Markdown";
 import type { EstateProfile } from "@/lib/design/data";
-import { getChatHistory, getEstate, openChatStream } from "@/lib/agentClient";
-import type { EstateState } from "@/types";
+import { createChatSession, getChatHistory, getChatSessions, getEstate, openChatStream } from "@/lib/agentClient";
+import type { ChatSession, EstateState } from "@/types";
 
 const I = ExecutorIcons;
 
@@ -59,6 +59,8 @@ function buildGreeting(deceasedName: string, executorName?: string | null, docum
 export function ChatScreen({ estate }: Props) {
   const [suggestions, setSuggestions] = React.useState<string[]>(DEFAULT_SUGGESTIONS);
   const [msgs, setMsgs] = React.useState<Msg[]>(() => [{ from: "ai", text: buildGreeting(estate.deceasedName) }]);
+  const [sessions, setSessions] = React.useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = React.useState<string | null>(null);
   const [subtitle, setSubtitle] = React.useState(`Grounded in ${firstName(estate.deceasedName)}'s documents, not legal advice`);
   const [draft, setDraft] = React.useState("");
   const [recording, setRecording] = React.useState(false);
@@ -73,14 +75,19 @@ export function ChatScreen({ estate }: Props) {
   React.useEffect(() => {
     if (!estate.id) return;
     let cancelled = false;
-    Promise.allSettled([getEstate(estate.id), getChatHistory(estate.id)]).then(([eRes, hRes]) => {
+    Promise.allSettled([getEstate(estate.id), getChatSessions(estate.id)]).then(async ([eRes, sRes]) => {
       if (cancelled) return;
       const estateData = eRes.status === "fulfilled" ? eRes.value : null;
+      const nextSessions = sRes.status === "fulfilled" ? sRes.value : [];
       if (estateData) {
         setSubtitle(`Grounded in ${firstName(estateData.deceasedName)}'s documents, not legal advice`);
         setSuggestions(buildSuggestions(estateData));
       }
-      const history = hRes.status === "fulfilled" ? hRes.value : [];
+      setSessions(nextSessions);
+      const latestSessionId = nextSessions[0]?.id ?? null;
+      setActiveSessionId(latestSessionId);
+      const history = latestSessionId ? await getChatHistory(estate.id, latestSessionId).catch(() => []) : [];
+      if (cancelled) return;
       if (history.length > 0) {
         setMsgs(history.map((m) => ({ from: m.role === "user" ? "user" : "ai", text: m.content })));
       } else if (estateData) {
@@ -90,6 +97,34 @@ export function ChatScreen({ estate }: Props) {
     });
     return () => { cancelled = true; };
   }, [estate.id]);
+
+  const greeting = React.useCallback(() => buildGreeting(estate.deceasedName), [estate.deceasedName]);
+
+  async function refreshSessions(nextActiveId?: string | null) {
+    const next = await getChatSessions(estate.id).catch(() => []);
+    setSessions(next);
+    if (nextActiveId !== undefined) setActiveSessionId(nextActiveId);
+  }
+
+  async function openSession(sessionId: string) {
+    if (busy || sessionId === activeSessionId) return;
+    setActiveSessionId(sessionId);
+    const history = await getChatHistory(estate.id, sessionId).catch(() => []);
+    setMsgs(history.length ? history.map((m) => ({ from: m.role === "user" ? "user" : "ai", text: m.content })) : [{ from: "ai", text: greeting() }]);
+  }
+
+  async function startNewChat() {
+    if (busy) return;
+    const created = await createChatSession(estate.id).catch(() => null);
+    if (!created) {
+      setActiveSessionId(null);
+      setMsgs([{ from: "ai", text: greeting() }]);
+      return;
+    }
+    setActiveSessionId(created.session.id);
+    setSessions((current) => [created.session, ...current.filter((s) => s.id !== created.session.id)]);
+    setMsgs([{ from: "ai", text: greeting() }]);
+  }
 
   React.useEffect(() => {
     if (endRef.current && endRef.current.parentNode) (endRef.current.parentNode as HTMLElement).scrollTop = endRef.current.offsetTop;
@@ -103,8 +138,15 @@ export function ChatScreen({ estate }: Props) {
     setBusy(true);
 
     let full = "";
+    let sessionId = activeSessionId;
     try {
-      const stream = await openChatStream({ estateId: estate.id, message: t });
+      if (!sessionId) {
+        const created = await createChatSession(estate.id);
+        sessionId = created.session.id;
+        setActiveSessionId(sessionId);
+        setSessions((current) => [created.session, ...current.filter((s) => s.id !== created.session.id)]);
+      }
+      const stream = await openChatStream({ estateId: estate.id, sessionId, message: t });
       const reader = stream?.getReader();
       const decoder = new TextDecoder();
       if (reader) {
@@ -115,6 +157,10 @@ export function ChatScreen({ estate }: Props) {
           for (const line of chunk.split("\n")) {
             if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
             const parsed = JSON.parse(line.replace("data: ", ""));
+            if (parsed.sessionId) {
+              sessionId = parsed.sessionId;
+              setActiveSessionId(sessionId);
+            }
             full += parsed.token ?? "";
             setMsgs((m) => {
               const copy = [...m];
@@ -124,6 +170,7 @@ export function ChatScreen({ estate }: Props) {
           }
         }
       }
+      await refreshSessions(sessionId);
       if (viaVoice && full.trim()) void speak(full);
     } catch {
       setMsgs((m) => {
@@ -187,6 +234,11 @@ export function ChatScreen({ estate }: Props) {
     }
   }
 
+  function sessionLabel(session: ChatSession): string {
+    const when = new Date(session.updatedAt);
+    return Number.isNaN(when.getTime()) ? "" : when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
   if (estate && !estate.hasDocuments) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "80px 40px", textAlign: "center" }}>
@@ -202,7 +254,48 @@ export function ChatScreen({ estate }: Props) {
   }
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 760, margin: "0 auto", width: "100%" }}>
+    <div style={{ height: "100%", display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", width: "100%", minWidth: 0 }}>
+      <aside style={{ borderRight: "1px solid var(--border-subtle)", background: "var(--paper-50)", padding: 16, overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text-strong)" }}>Chats</h2>
+          <button
+            type="button"
+            aria-label="Start a new chat"
+            title="Start a new chat"
+            onClick={startNewChat}
+            disabled={busy}
+            style={{ width: 34, height: 34, borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--surface-card)", color: "var(--text-brand)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: busy ? "not-allowed" : "pointer" }}
+          >
+            <I.Plus size={18} />
+          </button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sessions.length === 0 ? (
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", lineHeight: "var(--leading-relaxed)", padding: "8px 2px" }}>No saved chats yet.</div>
+          ) : sessions.map((session) => {
+            const active = session.id === activeSessionId;
+            return (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => openSession(session.id)}
+                disabled={busy}
+                style={{ textAlign: "left", borderRadius: "var(--radius-md)", border: active ? "1px solid var(--evergreen-300)" : "1px solid transparent", background: active ? "var(--evergreen-50)" : "transparent", padding: "10px 9px", cursor: busy ? "not-allowed" : "pointer", color: "var(--text-body)" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{session.title}</span>
+                  <span style={{ flex: "none", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{sessionLabel(session)}</span>
+                </div>
+                {session.preview ? (
+                  <div style={{ marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{session.preview}</div>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      <section style={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 760, margin: "0 auto", width: "100%", minWidth: 0 }}>
       <header style={{ padding: "24px 28px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-xl)", fontWeight: 600, color: "var(--text-strong)" }}>Estate chat</h1>
         <p style={{ margin: "4px 0 0", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{subtitle}</p>
@@ -256,6 +349,7 @@ export function ChatScreen({ estate }: Props) {
           <Button variant="primary" onClick={() => send()} disabled={busy} leadingIcon={<I.Send size={16} />} style={{ height: 44 }}>Send</Button>
         </div>
       </div>
+      </section>
     </div>
   );
 }

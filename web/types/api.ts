@@ -31,6 +31,7 @@ export interface ChatRequest {
   estateId: string;
   message: string;
   topK?: number;
+  sessionId?: string | null;
 }
 
 export interface ChatMessage {
@@ -41,6 +42,27 @@ export interface ChatMessage {
 
 export interface ChatHistoryResponse {
   estateId: string;
+  sessionId?: string | null;
+  messages: ChatMessage[];
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  preview?: string | null;
+}
+
+export interface ChatSessionsResponse {
+  estateId: string;
+  sessions: ChatSession[];
+}
+
+export interface ChatSessionResponse {
+  estateId: string;
+  session: ChatSession;
   messages: ChatMessage[];
 }
 

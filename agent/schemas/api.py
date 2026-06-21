@@ -37,6 +37,7 @@ class ChatRequest(ContractModel):
     estateId: str = "demo-milligan"
     message: str
     topK: int = 5
+    sessionId: str | None = None
 
 
 class ChatMessage(ContractModel):
@@ -47,6 +48,27 @@ class ChatMessage(ContractModel):
 
 class ChatHistoryResponse(ContractModel):
     estateId: str
+    sessionId: str | None = None
+    messages: list[ChatMessage] = Field(default_factory=list)
+
+
+class ChatSession(ContractModel):
+    id: str
+    title: str
+    createdAt: str
+    updatedAt: str
+    messageCount: int = 0
+    preview: str | None = None
+
+
+class ChatSessionsResponse(ContractModel):
+    estateId: str
+    sessions: list[ChatSession] = Field(default_factory=list)
+
+
+class ChatSessionResponse(ContractModel):
+    estateId: str
+    session: ChatSession
     messages: list[ChatMessage] = Field(default_factory=list)
 
 
