@@ -1,4 +1,5 @@
 import type { Alert } from "@/types/estate";
+import { formatAlertTimingLabel } from "@/lib/alertTiming";
 
 const tone = {
   critical: "border-red-300 bg-red-50 text-red-950",
@@ -14,11 +15,9 @@ export function AlertBanner({ alert }: { alert: Alert }) {
           <p className="text-xs font-semibold uppercase tracking-wide">{alert.severity}</p>
           <h2 className="mt-1 text-lg font-semibold">{alert.title}</h2>
         </div>
-        {typeof alert.daysRemaining === "number" ? (
-          <span className="shrink-0 rounded border border-current px-2 py-1 text-sm">
-            {alert.daysRemaining} days
-          </span>
-        ) : null}
+        <span className="shrink-0 rounded border border-current px-2 py-1 text-sm">
+          {formatAlertTimingLabel(alert)}
+        </span>
       </div>
       <p className="mt-3 text-sm leading-6">{alert.body}</p>
       <p className="mt-3 text-sm font-semibold">Next action: {alert.actionRequired}</p>

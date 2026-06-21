@@ -6,6 +6,7 @@ import io
 import pdfplumber
 
 MIN_TEXT_CHARS = 150
+HEIC_CONTENT_TYPES = {"image/heic", "image/heif"}
 
 
 def extract_text(content: bytes, content_type: str) -> str:
@@ -18,6 +19,8 @@ def extract_text(content: bytes, content_type: str) -> str:
     if "pdf" in content_type:
         return _from_pdf(content)
     if content_type.startswith("image/"):
+        if content_type in HEIC_CONTENT_TYPES:
+            content, content_type = _heic_to_jpeg(content)
         return _from_image(content, content_type)
     return content.decode("utf-8", errors="ignore")
 
@@ -110,3 +113,18 @@ def _from_image(content: bytes, content_type: str) -> str:
     except Exception as exc:
         print(f"[pdf_reader] Claude Vision image failed: {exc}")
         return ""
+
+
+def _heic_to_jpeg(content: bytes) -> tuple[bytes, str]:
+    try:
+        from PIL import Image
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+        with Image.open(io.BytesIO(content)) as image:
+            converted = io.BytesIO()
+            image.convert("RGB").save(converted, format="JPEG", quality=94)
+            return converted.getvalue(), "image/jpeg"
+    except Exception as exc:
+        print(f"[pdf_reader] HEIC/HEIF conversion failed: {exc}")
+        return content, "image/jpeg"

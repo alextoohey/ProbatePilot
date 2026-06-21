@@ -3,7 +3,7 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Badge, Button, Card } from "@/components/ds";
-import { getEstate, parseDocument } from "@/lib/agentClient";
+import { deleteDocument, getEstate, parseDocument, parseDocuments } from "@/lib/agentClient";
 import {
   DEMO_ESTATE,
   DOC_CHECKLIST,
@@ -20,11 +20,12 @@ type Props = { estate?: EstateProfile | null; onDocumentsChanged?: () => void };
 
 type Doc = { id: string; name: string; type: string; documentType: string; parsed: boolean };
 
-const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
+const IMAGE_EXT = /\.(png|jpe?g|hei[cf])$/i;
 
 // Offered when auto-detection can't identify a document and the user picks the
 // type manually. Values are stored verbatim as the document's documentType.
 const DOC_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Select document type" },
   { value: "will", label: "Will or trust" },
   { value: "death_certificate", label: "Death certificate" },
   { value: "letters_testamentary", label: "Letters testamentary" },
@@ -38,7 +39,7 @@ const DOC_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "distribution_receipt", label: "Distribution receipt" },
   { value: "tax_return", label: "Tax return" },
   { value: "insurance_policy", label: "Insurance policy" },
-  { value: "other", label: "Other / not listed" },
+  { value: "other", label: "None / supporting document" },
 ];
 
 function documentTypeLabel(documentType: string) {
@@ -123,11 +124,16 @@ function parseProgressLabel(progress: number) {
 function ParseProgress({
   fileName,
   progress,
+  batchIndex,
+  batchTotal,
 }: {
   fileName: string | null;
   progress: number;
+  batchIndex?: number;
+  batchTotal?: number;
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+  const batchLabel = batchTotal && batchTotal > 1 && batchIndex ? ` ${batchIndex} of ${batchTotal}` : "";
   return (
     <div style={{ maxWidth: 460, margin: "18px auto 0", textAlign: "left" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
@@ -135,7 +141,7 @@ function ParseProgress({
           <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fileName || "Document"}
           </p>
-          <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{parseProgressLabel(clamped)}</p>
+          <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{parseProgressLabel(clamped)}{batchLabel}</p>
         </div>
         <span style={{ flex: "none", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)" }}>{clamped}%</span>
       </div>
@@ -176,9 +182,12 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   const [parsing, setParsing] = React.useState(false);
   const [parseProgress, setParseProgress] = React.useState(0);
   const [parsingFileName, setParsingFileName] = React.useState<string | null>(null);
+  const [uploadBatch, setUploadBatch] = React.useState<{ index: number; total: number } | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = React.useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = React.useState<string | null>(null);
   // Set when auto-detection fails: holds the file awaiting a manual type choice.
-  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = React.useState<File[]>([]);
   const [pendingType, setPendingType] = React.useState<string>(DOC_TYPE_OPTIONS[0].value);
   const [assets, setAssets] = React.useState<Asset[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -279,48 +288,136 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   }
   function deleteAsset(id: string) { setAssets((cur) => cur.filter((a) => a.id !== id)); if (editingId === id) cancelEdit(); }
 
-  async function uploadFile(file: File, documentType?: string) {
+  async function parseSingleFile(file: File, documentType?: string): Promise<"stored" | "needs_type"> {
+    const result = await parseDocument(file, estateId, documentType);
+    if (result.needsTypeSelection) return "needs_type";
+    setReviewMessage(result.reviewMessage ?? "We found information in this document. Please review it before relying on the estate update.");
+    return "stored";
+  }
+
+  async function parseBatch(files: File[]): Promise<{
+    storedFiles: File[];
+    unidentifiedFiles: File[];
+    failedFileNames: string[];
+    reviewMessages: string[];
+  }> {
+    const result = await parseDocuments(files, estateId);
+    const fileByName = new Map(files.map((file) => [file.name, file]));
+    const failedNames = new Set(result.failed.map((failure) => failure.fileName));
+    const storedFiles: File[] = [];
+    const unidentifiedFiles: File[] = [];
+    const reviewMessages: string[] = [];
+
+    for (const parsed of result.results) {
+      const file = parsed.fileName ? fileByName.get(parsed.fileName) : undefined;
+      if (!file || failedNames.has(file.name)) continue;
+      if (parsed.needsTypeSelection) {
+        unidentifiedFiles.push(file);
+      } else {
+        storedFiles.push(file);
+        if (parsed.reviewMessage) reviewMessages.push(parsed.reviewMessage);
+      }
+    }
+
+    return {
+      storedFiles,
+      unidentifiedFiles,
+      failedFileNames: result.failed.map((failure) => failure.fileName),
+      reviewMessages,
+    };
+  }
+
+  async function uploadFiles(files: File[], documentType?: string) {
+    const uploadable = files.filter(Boolean);
+    if (uploadable.length === 0 || parsing) return;
     setUploadError(null);
+    setReviewMessage(null);
     if (parseDoneTimer.current !== null) {
       window.clearTimeout(parseDoneTimer.current);
       parseDoneTimer.current = null;
     }
-    setParsingFileName(file.name);
+    setPendingFiles((current) => current.filter((pending) => !uploadable.includes(pending)));
     setParseProgress(6);
     setParsing(true);
-    let parsed = false;
+    setUploadBatch(uploadable.length > 1 ? { index: 1, total: uploadable.length } : null);
+    const storedFiles: File[] = [];
+    const unidentifiedFiles: File[] = [];
+    const failedFileNames: string[] = [];
+    const reviewMessages: string[] = [];
+    let parsedAny = false;
     try {
-      const result = await parseDocument(file, estateId, documentType);
-      // Auto-detection failed and we have no manual choice yet — prompt for the type.
-      if (result.needsTypeSelection) {
-        setPendingFile(file);
-        setPendingType(DOC_TYPE_OPTIONS[0].value);
-        return;
+      if (!documentType && uploadable.length > 1) {
+        setParsingFileName(`${uploadable.length} documents`);
+        setParseProgress(28);
+        const batch = await parseBatch(uploadable);
+        storedFiles.push(...batch.storedFiles);
+        unidentifiedFiles.push(...batch.unidentifiedFiles);
+        failedFileNames.push(...batch.failedFileNames);
+        reviewMessages.push(...batch.reviewMessages);
+        parsedAny = batch.storedFiles.length > 0;
+      } else {
+        for (let index = 0; index < uploadable.length; index += 1) {
+          const file = uploadable[index];
+          setParsingFileName(file.name);
+          setUploadBatch(uploadable.length > 1 ? { index: index + 1, total: uploadable.length } : null);
+          setParseProgress(uploadable.length > 1 ? Math.max(6, Math.round((index / uploadable.length) * 88)) : 6);
+          try {
+            const status = await parseSingleFile(file, documentType);
+            if (status === "needs_type") {
+              unidentifiedFiles.push(file);
+              continue;
+            }
+            storedFiles.push(file);
+            parsedAny = true;
+          } catch (error) {
+            console.error(error);
+            failedFileNames.push(file.name);
+          }
+        }
       }
-      setPendingFile(null);
+      if (reviewMessages.length > 0) {
+        setReviewMessage(reviewMessages.length === 1 ? reviewMessages[0] : `We parsed ${reviewMessages.length} documents. Please review the estate updates before relying on them.`);
+      }
       const refreshed = await getEstate(estateId);
       setDocs(docsFromEstateDocuments(refreshed.documents));
       setAssets(refreshed.assets.map(fromEstateAsset));
-      const newDoc = refreshed.documents.find((d) => d.fileName === file.name);
-      if (newDoc) {
-        blobUrlMap.current.set(newDoc.id, URL.createObjectURL(file));
+      for (const file of storedFiles) {
+        const newDoc = refreshed.documents.find((d) => d.fileName === file.name);
+        if (newDoc && !blobUrlMap.current.has(newDoc.id)) {
+          blobUrlMap.current.set(newDoc.id, URL.createObjectURL(file));
+        }
       }
-      parsed = true;
+      if (unidentifiedFiles.length > 0) {
+        setPendingFiles((current) => [...current, ...unidentifiedFiles]);
+        setPendingType("");
+      }
       setParseProgress(100);
       // Let the shell re-evaluate this estate so chat/letters unlock.
-      onDocumentsChanged?.();
+      if (parsedAny) onDocumentsChanged?.();
+      if (failedFileNames.length > 0 || unidentifiedFiles.length > 0) {
+        const messages: string[] = [];
+        if (failedFileNames.length > 0) {
+          messages.push(`Couldn't read ${failedFileNames.join(", ")}. Please reupload clearer files.`);
+        }
+        if (unidentifiedFiles.length > 0) {
+          messages.push("Pick a type below for any document we couldn't identify.");
+        }
+        setUploadError(messages.join(" "));
+      }
     } catch (error) {
       console.error(error);
       setUploadError(error instanceof Error ? error.message : "Couldn't read that document. Please try again.");
       setParsing(false);
       setParsingFileName(null);
       setParseProgress(0);
+      setUploadBatch(null);
     } finally {
-      if (parsed) {
+      if (parsedAny || unidentifiedFiles.length > 0 || failedFileNames.length > 0) {
         parseDoneTimer.current = window.setTimeout(() => {
           setParsing(false);
           setParsingFileName(null);
           setParseProgress(0);
+          setUploadBatch(null);
           parseDoneTimer.current = null;
         }, 650);
       }
@@ -329,13 +426,44 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   }
 
   function confirmPendingType() {
-    if (!pendingFile) return;
-    void uploadFile(pendingFile, pendingType);
+    const [pendingFile] = pendingFiles;
+    if (!pendingFile || !pendingType) return;
+    void uploadFiles([pendingFile], pendingType);
   }
 
   function cancelPendingType() {
-    setPendingFile(null);
+    setPendingFiles((current) => current.slice(1));
     setUploadError(null);
+  }
+
+  function selectedFiles(files: FileList | null | undefined) {
+    return Array.from(files ?? []);
+  }
+
+  async function removeDocument(doc: Doc) {
+    if (seeded) {
+      setDocs((current) => current.filter((d) => d.id !== doc.id));
+      if (openDoc?.id === doc.id) setOpenDoc(null);
+      return;
+    }
+    if (!window.confirm(`Delete ${doc.name}? This removes the file from this estate.`)) return;
+    setDeletingDocId(doc.id);
+    setUploadError(null);
+    try {
+      await deleteDocument(estateId, doc.id);
+      blobUrlMap.current.delete(doc.id);
+      if (openDoc?.id === doc.id) setOpenDoc(null);
+      setDocs((current) => current.filter((d) => d.id !== doc.id));
+      const refreshed = await getEstate(estateId);
+      setDocs(docsFromEstateDocuments(refreshed.documents).filter((d) => d.id !== doc.id));
+      setAssets(refreshed.assets.map(fromEstateAsset));
+      onDocumentsChanged?.();
+    } catch (error) {
+      console.error(error);
+      setUploadError(error instanceof Error ? error.message : "Could not delete that document.");
+    } finally {
+      setDeletingDocId(null);
+    }
   }
 
   const assetIcon: Record<string, typeof I.Home> = { Home: I.Home, Bank: I.Bank, Car: I.Car };
@@ -350,7 +478,7 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
       <header>
         <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", color: "var(--text-strong)" }}>Documents</h1>
         <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
-          Upload a will, deed, bank statement, or policy. I'll read each one and build the estate from it.
+          Upload a packet of estate documents. I'll match each file to the checklist and build the estate from it.
         </p>
       </header>
 
@@ -361,8 +489,8 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
           e.preventDefault();
           setDrag(false);
           if (parsing) return;
-          const file = e.dataTransfer.files?.[0];
-          if (file) void uploadFile(file);
+          const files = selectedFiles(e.dataTransfer.files);
+          if (files.length > 0) void uploadFiles(files);
         }}
         onClick={(e) => {
           if (e.target === inputRef.current) return;
@@ -378,28 +506,45 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
+          accept="application/pdf,image/jpeg,image/png,image/heic,image/heif,.pdf,.jpg,.jpeg,.png,.heic,.heif"
+          multiple
           disabled={parsing}
           style={{ display: "none" }}
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void uploadFile(file);
+            const files = selectedFiles(e.target.files);
+            if (files.length > 0) void uploadFiles(files);
           }}
         />
         <div style={{ display: "inline-flex", width: 48, height: 48, borderRadius: "999px", background: "var(--evergreen-100)", color: "var(--evergreen-700)", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
           <I.Upload size={22} />
         </div>
         <div style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-strong)" }}>
-          {parsing ? "Reading the document…" : "Drop a document, or click to upload"}
+          {parsing ? "Reading documents…" : "Drop documents, or click to upload"}
         </div>
-        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or text. Saved after parsing succeeds</div>
-        {parsing ? <ParseProgress fileName={parsingFileName} progress={parseProgress} /> : null}
+        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, JPEG, PNG, HEIC, or HEIF. Select as many as you have.</div>
+        {parsing ? <ParseProgress fileName={parsingFileName} progress={parseProgress} batchIndex={uploadBatch?.index} batchTotal={uploadBatch?.total} /> : null}
         {uploadError ? (
           <div style={{ fontSize: "var(--text-sm)", color: "var(--critical-text)", marginTop: 10 }}>{uploadError}</div>
         ) : null}
       </label>
 
-      {pendingFile ? (
+      {reviewMessage ? (
+        <div style={{
+          borderRadius: "var(--radius-lg)", border: "1px solid var(--warning-border)",
+          background: "var(--warning-bg)", padding: "16px 18px", display: "flex", gap: 12,
+          alignItems: "flex-start", color: "var(--warning-text)",
+        }}>
+          <I.FileText size={18} style={{ flex: "none", marginTop: 1 }} />
+          <div>
+            <div style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--text-strong)" }}>
+              Review the parse
+            </div>
+            <p style={{ margin: "4px 0 0", fontSize: "var(--text-sm)", lineHeight: "var(--leading-relaxed)" }}>{reviewMessage}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingFiles.length > 0 ? (
         <div style={{
           borderRadius: "var(--radius-lg)", border: "1.5px solid var(--border-strong)",
           background: "var(--surface-card)", padding: "20px 22px", display: "grid", gap: 12,
@@ -409,7 +554,8 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
               We couldn&apos;t identify this document
             </div>
             <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>
-              Tell us what <strong>{pendingFile.name}</strong> is so we can file it correctly.
+              Tell us what <strong>{pendingFiles[0].name}</strong> is so we can file it correctly.
+              {pendingFiles.length > 1 ? ` ${pendingFiles.length - 1} more file${pendingFiles.length === 2 ? "" : "s"} will be next.` : ""}
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -422,11 +568,11 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
                 border: "1px solid var(--border-strong)", background: "var(--surface-card)",
                 fontSize: "var(--text-sm)", color: "var(--text-strong)", cursor: "pointer", appearance: "none",
               }}>
-              {DOC_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {DOC_TYPE_OPTIONS.map((opt, index) => (
+                <option key={opt.value || "placeholder"} value={opt.value} disabled={index === 0}>{opt.label}</option>
               ))}
             </select>
-            <Button onClick={confirmPendingType} disabled={parsing}>
+            <Button onClick={confirmPendingType} disabled={parsing || !pendingType}>
               {parsing ? "Saving…" : "Save document"}
             </Button>
             <Button variant="ghost" onClick={cancelPendingType} disabled={parsing}>Cancel</Button>
@@ -483,17 +629,34 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
               <li style={{ padding: "18px 20px", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>No documents yet. Upload one above to begin.</li>
             ) : docs.map((d, i) => (
               <li key={d.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
-                <button onClick={() => setOpenDoc(d)}
+                <div
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 20px", border: "none", background: "transparent", cursor: "pointer", transition: "background var(--transition-fast)" }}>
-                  <I.FileText size={18} color="var(--text-subtle)" />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
-                    <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{d.type}. Click to open</div>
-                  </div>
+                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 14px 13px 20px", transition: "background var(--transition-fast)" }}>
+                  <button onClick={() => setOpenDoc(d)}
+                    style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, textAlign: "left", padding: 0, border: "none", background: "transparent", cursor: "pointer" }}>
+                    <I.FileText size={18} color="var(--text-subtle)" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                      <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{d.type}. Click to open</div>
+                    </div>
+                  </button>
                   <Badge tone="success">Parsed</Badge>
-                </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${d.name}`}
+                    title="Delete document"
+                    disabled={deletingDocId === d.id}
+                    onClick={() => void removeDocument(d)}
+                    style={{
+                      flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 30, height: 30, borderRadius: "var(--radius-sm)", border: "none",
+                      background: "transparent", color: "var(--critical-text)", cursor: deletingDocId === d.id ? "default" : "pointer",
+                      opacity: deletingDocId === d.id ? 0.5 : 1,
+                    }}>
+                    <I.X size={16} />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

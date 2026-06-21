@@ -8,6 +8,7 @@ export type AssetType =
 
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertType = "deadline" | "liability" | "missing_doc" | "rule_violation";
+export type AlertTimingStatus = "dated" | "blocking" | "prerequisite" | "missing_data" | "no_deadline";
 export type EstatePhase = 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskStatus = "todo" | "in_progress" | "done" | "blocked";
 
@@ -69,7 +70,10 @@ export interface Alert {
   body: string;
   rule: string;
   daysRemaining?: number | null;
+  timingStatus?: AlertTimingStatus;
   actionRequired: string;
+  whatYouNeed: string[];
+  steps: string[];
   createdAt: string;
   dismissed: boolean;
 }

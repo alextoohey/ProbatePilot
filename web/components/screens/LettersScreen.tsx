@@ -20,6 +20,7 @@ const LETTER_TYPES: { value: string; label: string }[] = [
   { value: "irs_ein_request", label: "IRS EIN request" },
   { value: "beneficiary_update", label: "Beneficiary update" },
   { value: "property_transfer", label: "Property transfer" },
+  { value: "custom", label: "Custom letter…" },
 ];
 
 // Which letter types are addressed to a specific person/organization, and where
@@ -36,6 +37,8 @@ export function LettersScreen({ estate }: Props) {
 
   const [type, setType] = React.useState(LETTER_TYPES[0].value);
   const [recipient, setRecipient] = React.useState("");
+  const [customRecipient, setCustomRecipient] = React.useState("");
+  const [instructions, setInstructions] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -46,8 +49,19 @@ export function LettersScreen({ estate }: Props) {
   const [properties, setProperties] = React.useState<string[]>([]);
   const [savedLetters, setSavedLetters] = React.useState<SavedLetter[]>([]);
   const [saving, setSaving] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
 
-  const markdownRef = React.useRef<HTMLTextAreaElement>(null);
+  // Simulated drafting progress — there's no token-level signal from the
+  // single-shot letter call, so we ramp toward ~92% while busy and reset after.
+  React.useEffect(() => {
+    if (!busy) { setProgress(0); return; }
+    setProgress(10);
+    const id = window.setInterval(() => {
+      setProgress((p) => (p < 92 ? p + Math.max(1, Math.round((92 - p) / 10)) : p));
+    }, 280);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
   function copyDraft() { navigator.clipboard?.writeText(draft); }
 
   async function saveDraft() {
@@ -67,6 +81,7 @@ export function LettersScreen({ estate }: Props) {
     setDraft(letter.draft);
   }
 
+  const isCustom = type === "custom";
   const typeLabel = LETTER_TYPES.find((t) => t.value === type)?.label ?? type;
   const recipientSource = RECIPIENT_SOURCE[type];
   const recipientOptions =
@@ -74,6 +89,7 @@ export function LettersScreen({ estate }: Props) {
     recipientSource === "bankAccounts" ? bankAccounts :
     recipientSource === "properties" ? properties :
     creditors;
+  const canGenerate = !busy && !!estateId && (!isCustom || instructions.trim().length > 0);
 
   // Pull the real creditors and beneficiaries so the recipient list reflects
   // this estate's parsed documents instead of hardcoded names.
@@ -100,10 +116,11 @@ export function LettersScreen({ estate }: Props) {
   React.useEffect(() => { setRecipient(""); }, [type]);
 
   async function generate() {
-    if (!estateId || busy) return;
+    if (!canGenerate) return;
+    const recipientName = isCustom ? customRecipient.trim() || undefined : recipient || undefined;
     setBusy(true); setDraft(""); setError(null);
     try {
-      const res = await generateLetter(type, estateId, recipient || undefined);
+      const res = await generateLetter(type, estateId, recipientName, isCustom ? instructions.trim() : undefined);
       setDraft(res.draft);
     } catch (e) {
       setError(e instanceof Error ? e.message : "I couldn't draft that letter. Make sure the agent is running, then try again.");
@@ -153,11 +170,26 @@ export function LettersScreen({ estate }: Props) {
           <div style={{ display: "grid", gap: "var(--space-4)" }}>
             <Select label="Letter type" value={type} onChange={(e) => setType(e.target.value)}
               options={LETTER_TYPES} />
-            {recipientSource && recipientOptions.length > 0 ? (
+            {isCustom ? (
+              <>
+                <label style={{ display: "grid", gap: 6, fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)" }}>
+                  What should this letter do?
+                  <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={4}
+                    placeholder="e.g. Ask the county assessor's office to reassess the Marin Ave property under the parent–child exclusion."
+                    style={{ resize: "vertical", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", lineHeight: 1.5, color: "var(--text-body)", background: "var(--surface-card)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "10px 12px", outline: "none", boxSizing: "border-box" }} />
+                </label>
+                <label style={{ display: "grid", gap: 6, fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)" }}>
+                  Recipient (optional)
+                  <input value={customRecipient} onChange={(e) => setCustomRecipient(e.target.value)}
+                    placeholder="e.g. Alameda County Assessor's Office"
+                    style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--text-body)", background: "var(--surface-card)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "9px 12px", outline: "none", boxSizing: "border-box" }} />
+                </label>
+              </>
+            ) : recipientSource && recipientOptions.length > 0 ? (
               <Select label="Recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)}
                 options={[{ value: "", label: "Choose a recipient…" }, ...recipientOptions.map((r) => ({ value: r, label: r }))]} />
             ) : null}
-            <Button variant="primary" fullWidth onClick={generate} disabled={busy} leadingIcon={<I.Sparkle size={16} />}>
+            <Button variant="primary" fullWidth onClick={generate} disabled={!canGenerate} leadingIcon={<I.Sparkle size={16} />}>
               {busy ? "Drafting…" : "Draft this letter"}
             </Button>
             {error ? (
@@ -169,22 +201,28 @@ export function LettersScreen({ estate }: Props) {
           </div>
         </Card>
 
-        <Card title="Draft preview" subtitle={draft ? "Edit below, then save, print, or copy" : "No draft yet"}
+        <Card title="Draft preview" subtitle={draft ? "Edit any wording, then save, print, or copy to send" : "No draft yet"}
           headerRight={draft ? <Badge tone="brand">Draft</Badge> : null}
           footer={draft ? (
             <div style={{ display: "flex", gap: 8 }}>
               <Button variant="secondary" size="sm" onClick={saveDraft} disabled={saving}>{saving ? "Saving…" : "Save draft"}</Button>
-              <Button variant="secondary" size="sm" onClick={copyDraft}>Copy</Button>
+              <Button variant="secondary" size="sm" onClick={copyDraft}>Copy as plain text</Button>
               <Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button>
             </div>
           ) : null}>
-          {draft ? (
-            <textarea
-              ref={markdownRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              style={{ display: "block", width: "100%", minHeight: 420, padding: "var(--space-5)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.8, color: "var(--text-body)", whiteSpace: "pre-wrap", border: "none", outline: "none", resize: "vertical", background: "transparent", boxSizing: "border-box" }}
-            />
+          {busy ? (
+            <div style={{ padding: "48px var(--space-5)", display: "grid", gap: 12, placeItems: "center" }}>
+              <div style={{ width: "100%", maxWidth: 420, height: 4, background: "var(--border-subtle)", borderRadius: 999, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${progress}%`, background: "var(--brand-500)", borderRadius: 999, transition: "width 0.28s ease" }} />
+              </div>
+              <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--text-muted)", textAlign: "center" }}>
+                Pulling the right names, dates, and amounts from the estate.
+              </p>
+            </div>
+          ) : draft ? (
+            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false}
+              aria-label="Letter draft"
+              style={{ display: "block", width: "100%", boxSizing: "border-box", minHeight: 460, resize: "vertical", margin: 0, padding: "var(--space-5)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.8, color: "var(--text-body)", background: "var(--surface-card)", border: "none", borderRadius: "var(--radius-md)", outline: "none", whiteSpace: "pre-wrap" }} />
           ) : (
             <div style={{ padding: "32px 0", textAlign: "center", color: "var(--text-subtle)" }}>
               <I.FileText size={28} color="var(--text-subtle)" />

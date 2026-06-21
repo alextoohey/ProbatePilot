@@ -40,6 +40,7 @@ export type Alert = {
   severity: Severity;
   title: string;
   daysRemaining?: number | null;
+  timingStatus?: "dated" | "blocking" | "prerequisite" | "missing_data" | "no_deadline";
   rule: string;
   body: string;
   actionRequired: string;

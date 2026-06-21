@@ -83,6 +83,11 @@ export const ExecutorIcons = {
   Pencil: I(["M12 20h9", "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"]),
   Check: I(["M20 6 9 17l-5-5"]),
   X: I(["M18 6 6 18", "M6 6l12 12"]),
+  Headset: I([
+    "M4 18v-6a8 8 0 0 1 16 0v6",
+    { t: "rect", x: 2, y: 14, w: 4, h: 7, rx: 2 },
+    { t: "rect", x: 18, y: 14, w: 4, h: 7, rx: 2 },
+  ]),
 };
 
 export type IconName = keyof typeof ExecutorIcons;

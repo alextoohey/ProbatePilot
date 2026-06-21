@@ -5,7 +5,7 @@ import logging
 import os
 import re
 
-from llm.claude import DOCUMENT_MODEL, get_client
+from llm.claude import DOCUMENT_MODEL, get_async_client, get_client
 from observability.arize import set_span_attribute, span
 from prompts.extraction import TYPE_DETECTION_PROMPT
 from schemas.documents import DocumentExtraction, UnknownDocumentExtraction
@@ -43,9 +43,19 @@ TYPE_ALIASES: dict[str, list[str]] = {
 
 # Minimum average token similarity for a fuzzy filename match to count.
 _FILENAME_MATCH_THRESHOLD = 0.82
+_FUZZY_STOPWORDS = {"a", "an", "and", "for", "of", "the", "to"}
 
 
 async def parse_document_text(
+    text: str,
+    filename: str = "",
+    forced_type: str | None = None,
+) -> DocumentExtraction:
+    extraction, _ = await parse_document_text_with_type(text, filename=filename, forced_type=forced_type)
+    return extraction
+
+
+async def parse_document_text_with_type(
     text: str,
     filename: str = "",
     forced_type: str | None = None,
@@ -56,7 +66,7 @@ async def parse_document_text(
     of auto-detection (content + fuzzy filename matching). It is the label the
     caller should store the document under.
     """
-    document_type = forced_type or resolve_document_type(text, filename)
+    document_type = forced_type or await resolve_document_type_async(text, filename)
     with span(
         "documents.parse",
         action_type="document_parse",
@@ -87,7 +97,8 @@ def resolve_document_type(text: str, filename: str = "") -> str:
     """Best-effort document type from content and the filename.
 
     Content detection wins for the structured types we can parse; otherwise we fall
-    back to fuzzy filename matching, then alias keywords in the body text.
+    back to fuzzy filename matching. Non-parseable checklist labels must match the
+    file name or be selected by the user, so unrelated notices are not silently filed.
     """
     primary = _detect_type(text)
     if primary in PARSEABLE_TYPES:
@@ -97,7 +108,24 @@ def resolve_document_type(text: str, filename: str = "") -> str:
     if by_name:
         return by_name
 
-    return _detect_by_aliases(text.lower()) or "unknown"
+    return "unknown"
+
+
+async def resolve_document_type_async(text: str, filename: str = "") -> str:
+    """Async resolver used by upload routes so Claude detection can run in parallel."""
+    primary = _keyword_detect(text)
+    if primary in PARSEABLE_TYPES:
+        return primary
+
+    by_name = detect_type_from_filename(filename)
+    if by_name:
+        return by_name
+
+    primary = await _detect_type_async(text)
+    if primary in PARSEABLE_TYPES:
+        return primary
+
+    return "unknown"
 
 
 def detect_document_type(text: str) -> str:
@@ -129,21 +157,13 @@ def detect_type_from_filename(filename: str) -> str | None:
 
 def _token_similarity(alias: str, words: list[str]) -> float:
     """Average best-match similarity of each alias word against the filename words."""
-    alias_words = alias.split()
+    alias_words = [word for word in alias.split() if word not in _FUZZY_STOPWORDS]
     if not alias_words or not words:
         return 0.0
     total = 0.0
     for alias_word in alias_words:
         total += max(difflib.SequenceMatcher(None, alias_word, word).ratio() for word in words)
     return total / len(alias_words)
-
-
-def _detect_by_aliases(haystack: str) -> str | None:
-    """Match alias phrases anywhere in the lowercased body text."""
-    for dtype, aliases in TYPE_ALIASES.items():
-        if any(alias in haystack for alias in aliases):
-            return dtype
-    return None
 
 
 def _detect_type(text: str) -> str:
@@ -175,11 +195,47 @@ def _detect_type(text: str) -> str:
         return _keyword_detect(text)
 
 
+async def _detect_type_async(text: str) -> str:
+    sample = text[:1500].strip()
+    if not sample:
+        return "unknown"
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        return _keyword_detect(text)
+
+    client = get_async_client()
+    if client is None:
+        return _keyword_detect(text)
+
+    try:
+        response = await client.messages.create(
+            model=DOCUMENT_MODEL,
+            max_tokens=16,
+            messages=[{
+                "role": "user",
+                "content": f"{TYPE_DETECTION_PROMPT}\n\nDOCUMENT BEGINNING:\n{sample}",
+            }],
+        )
+        label = response.content[0].text.strip().lower()
+        if label in PARSEABLE_TYPES:
+            return label
+        return "unknown"
+    except Exception:
+        LOGGER.exception("Claude document type detection failed; using keyword fallback.")
+        return _keyword_detect(text)
+
+
 def _keyword_detect(text: str) -> str:
     lowered = text.lower()
-    if "last will" in lowered or "testament" in lowered or "beneficiary" in lowered:
+    if "last will" in lowered or "testament" in lowered:
         return "will"
-    if "statement" in lowered and ("balance" in lowered or "account" in lowered):
+    if (
+        "bank statement" in lowered
+        or "brokerage statement" in lowered
+        or "account statement" in lowered
+        or "checking statement" in lowered
+        or "savings statement" in lowered
+        or ("statement period" in lowered and "balance" in lowered)
+    ):
         return "bank_statement"
     if "grant deed" in lowered or "legal description" in lowered or "apn" in lowered:
         return "deed"

@@ -21,6 +21,7 @@ AssetType = Literal[
 DebtType = Literal["secured", "unsecured", "priority"]
 AlertSeverity = Literal["critical", "warning", "info"]
 AlertType = Literal["deadline", "liability", "missing_doc", "rule_violation"]
+AlertTimingStatus = Literal["dated", "blocking", "prerequisite", "missing_data", "no_deadline"]
 TaskStatus = Literal["todo", "in_progress", "done", "blocked"]
 EstatePhase = Literal[1, 2, 3, 4, 5, 6]
 
@@ -87,7 +88,10 @@ class Alert(ContractModel):
     body: str
     rule: str
     daysRemaining: int | None = None
+    timingStatus: AlertTimingStatus = "no_deadline"
     actionRequired: str
+    whatYouNeed: list[str] = Field(default_factory=list)
+    steps: list[str] = Field(default_factory=list)
     createdAt: str = Field(default_factory=utc_now_iso)
     dismissed: bool = False
 

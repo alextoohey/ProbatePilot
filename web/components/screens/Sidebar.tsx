@@ -24,6 +24,7 @@ export function Sidebar({ active, onNavigate, estates, activeEstateId, onSwitchE
   const [menuOpen, setMenuOpen] = React.useState(false);
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: I.Dashboard },
+    { id: "agent", label: "Agent", icon: I.Sparkle },
     { id: "documents", label: "Documents", icon: I.Upload },
     { id: "chat", label: "Estate chat", icon: I.Chat },
     { id: "letters", label: "Letters", icon: I.FileText },
