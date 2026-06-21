@@ -23,8 +23,7 @@ _async_client: anthropic.AsyncAnthropic | None = None
 class DocumentParseError(RuntimeError):
     """Raised when a document needs a real structured parse and none is available."""
 
-
-def _get_client() -> anthropic.Anthropic | None:
+def get_client() -> anthropic.Anthropic | None:
     """Return a sync Anthropic client when configured, else None."""
     global _client
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -101,7 +100,7 @@ async def structured_extract(
         tool_name = response_model.__name__
         schema = response_model.model_json_schema()
         schema.pop("title", None)
-        client = _get_client()
+        client = get_client()
 
         if client is None:
             set_span_attribute(current_span, "fallback_used", True)
