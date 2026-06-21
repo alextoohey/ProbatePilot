@@ -1,6 +1,6 @@
 # Member 2 — Data & Contracts (Python + TS)
 
-**Owner**: TBD
+**Owner**: Davyn
 **Languages**: Python (`agent/schemas/`, `agent/store/`, `agent/seed/`) **and**
 TypeScript (`web/types/`, `web/lib/schemas/`)
 **Track dependency**: You are the shared foundation. The estate-state contract and the

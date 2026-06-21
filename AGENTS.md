@@ -1,11 +1,11 @@
-# Executor AI — Claude Instructions
+# Executor AI — Codex Instructions
 
 ## What This Is
 An AI executor assistant. It parses estate documents into a live state graph, then
 proactively alerts the executor *before* probate deadlines and liability triggers are
 missed. The differentiator is a real **agent** — the DeadlineAgent — that reasons over
 estate state against California probate law and surfaces the next action before the
-executor knows to ask. Built with Claude for a 24-hour hackathon.
+executor knows to ask. Built with Codex for a 24-hour hackathon.
 
 Full project detail: [project_overview.md](project_overview.md)
 Tracks & sponsors: [hackathon_tracks_and_prizes.md](hackathon_tracks_and_prizes.md)
