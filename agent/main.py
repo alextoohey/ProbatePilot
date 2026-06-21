@@ -22,17 +22,19 @@ from llm.embeddings import embed_query, embed_texts
 from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
 from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
 from prompts.system import build_chat_prompt
-from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
+from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Asset, EstateState, Executor, UploadedDocument, utc_now_iso
 from store.redis_client import (
     add_document,
-    append_chat_messages,
+    append_chat_session_messages,
+    create_chat_session,
     create_session,
     create_user,
     delete_session,
     get_chat_history,
+    get_chat_session_history,
     get_estate_state,
     get_document_file,
     get_session_user_id,
@@ -41,6 +43,7 @@ from store.redis_client import (
     merge_estate_state,
     seed_demo_estate,
     semantic_search,
+    list_chat_sessions,
     set_document_file,
     set_estate_state,
     update_user,
@@ -378,9 +381,12 @@ async def chat(request: ChatRequest) -> StreamingResponse:
         set_span_attribute(current_span, "prompt_length", len(prompt))
         # Prior turns give the model conversational context; the current message
         # is appended inside stream_chat.
+        _, session_messages = get_chat_session_history(request.estateId, request.sessionId)
+        if not session_messages and request.sessionId is None:
+            session_messages = get_chat_history(request.estateId)
         history = [
             {"role": m.get("role", ""), "content": m.get("content", "")}
-            for m in get_chat_history(request.estateId)
+            for m in session_messages
         ]
         set_span_attribute(current_span, "history_turns", len(history))
 
@@ -398,23 +404,40 @@ async def chat(request: ChatRequest) -> StreamingResponse:
                 yield f"data: {json.dumps({'token': token})}\n\n"
             # Persist the exchange so the conversation survives reloads.
             now = utc_now_iso()
-            append_chat_messages(
+            saved_session_id, saved_history = append_chat_session_messages(
                 request.estateId,
+                request.sessionId,
                 [
                     {"role": "user", "content": request.message, "createdAt": now},
                     {"role": "assistant", "content": answer, "createdAt": utc_now_iso()},
                 ],
             )
+            yield f"data: {json.dumps({'sessionId': saved_session_id, 'messageCount': len(saved_history)})}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @app.get("/chat-history/{estate_id}")
-async def chat_history(estate_id: str) -> ChatHistoryResponse:
+async def chat_history(estate_id: str, sessionId: str | None = None) -> ChatHistoryResponse:
     with span("route.chat_history", estate_id=estate_id, action_type="chat_history"):
-        messages = get_chat_history(estate_id)
-        return ChatHistoryResponse(estateId=estate_id, messages=messages)
+        resolved_session_id, messages = get_chat_session_history(estate_id, sessionId)
+        if not messages and sessionId is None:
+            messages = get_chat_history(estate_id)
+        return ChatHistoryResponse(estateId=estate_id, sessionId=resolved_session_id, messages=messages)
+
+
+@app.get("/chat-sessions/{estate_id}")
+async def chat_sessions(estate_id: str) -> ChatSessionsResponse:
+    with span("route.chat_sessions", estate_id=estate_id, action_type="chat_sessions"):
+        return ChatSessionsResponse(estateId=estate_id, sessions=list_chat_sessions(estate_id))
+
+
+@app.post("/chat-sessions/{estate_id}")
+async def new_chat_session(estate_id: str) -> ChatSessionResponse:
+    with span("route.chat_session_create", estate_id=estate_id, action_type="chat_session_create"):
+        session = create_chat_session(estate_id)
+        return ChatSessionResponse(estateId=estate_id, session=session, messages=[])
 
 
 def _suggestion_fallback(estate: EstateState) -> list[str]:

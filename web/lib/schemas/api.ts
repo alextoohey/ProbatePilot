@@ -19,6 +19,7 @@ export const chatRequestSchema = z.object({
   estateId: z.string(),
   message: z.string(),
   topK: z.number().int().positive().optional(),
+  sessionId: z.string().nullable().optional(),
 }).strict();
 
 export const generateLetterRequestSchema = z.object({
@@ -54,6 +55,27 @@ export const chatMessageSchema = z.object({
 
 export const chatHistoryResponseSchema = z.object({
   estateId: z.string(),
+  sessionId: z.string().nullable().optional(),
+  messages: z.array(chatMessageSchema),
+}).strict();
+
+export const chatSessionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  messageCount: z.number().int(),
+  preview: z.string().nullable().optional(),
+}).strict();
+
+export const chatSessionsResponseSchema = z.object({
+  estateId: z.string(),
+  sessions: z.array(chatSessionSchema),
+}).strict();
+
+export const chatSessionResponseSchema = z.object({
+  estateId: z.string(),
+  session: chatSessionSchema,
   messages: z.array(chatMessageSchema),
 }).strict();
 
