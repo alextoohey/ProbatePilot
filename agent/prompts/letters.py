@@ -106,13 +106,14 @@ def build_letter_prompt(estate: EstateState, letter_type: str, recipient_name: s
     relevant_context = _relevant_context(estate, selected_type, recipient)
     statute_context = _statute_context(selected_type)
 
+    county_line = f", County of {estate.county}" if estate.county else ""
     return f"""Draft a sign-ready {LETTER_TYPE_LABELS[selected_type]} addressed specifically to: {recipient}
 
 Estate facts:
 - Deceased: {estate.deceasedName}, died {estate.dateOfDeath}
 - Executor: {estate.executor.name}, email: {estate.executor.email}
 - Letters testamentary issued: {estate.appointmentDate}
-- Jurisdiction: California
+- Jurisdiction: California{county_line}
 
 Relevant details:
 {relevant_context}
@@ -127,9 +128,12 @@ Drafting rules:
 - Warm, direct, professional tone. The executor may be grieving.
 - Do not give legal advice. Do not overclaim legal authority.
 - Only use a [bracketed placeholder] if the fact is truly unknown and critical. Omit optional fields entirely.
-- Format as a traditional business letter: sender block, date, recipient block, salutation, body paragraphs, closing, signature.
-- End with a signature block for {estate.executor.name}, Executor of the Estate of {estate.deceasedName}.
+- Format as a traditional business letter: sender block at the top, then date, recipient block, salutation, body paragraphs, closing, signature.
+- The sender block appears ONLY at the top. Do NOT repeat it at the bottom.
+- End with exactly: Sincerely, [two blank lines], {estate.executor.name}, Executor of the Estate of {estate.deceasedName}, {estate.executor.email}. Nothing after that.
+- The executor email is {estate.executor.email} — use it directly, never write [EXECUTOR EMAIL] or any email placeholder.
 - For creditor notices: cite California Probate Code §9051, state the specific amount owed to {recipient}, and ask them to file a claim.
+- When referencing the court, use "Superior Court of California{county_line}" — do not use a [County Name] placeholder.
 """
 
 
@@ -305,11 +309,19 @@ def _relevant_context(estate: EstateState, letter_type: str, recipient: str | No
                 return f"Debt for this creditor: {match.creditor}, ${match.amount:,.2f} ({match.type})"
         return f"Known debts:\n{_format_debts(estate)}"
     if letter_type == "bank_notification":
+        if recipient:
+            match = next((a for a in estate.assets if a.type == "bank_account" and recipient.lower() in a.description.lower()), None)
+            if match:
+                return f"Bank account for this institution: {match.description}" + (f", estimated value ${match.estimatedValue:,.2f}" if match.estimatedValue else "")
         bank_assets = [asset.description for asset in estate.assets if asset.type == "bank_account"]
         return f"Bank assets:\n{_bullets(bank_assets or ['[account description]'])}"
     if letter_type == "beneficiary_update":
         return f"Beneficiaries:\n{_format_beneficiaries(estate)}"
     if letter_type == "property_transfer":
+        if recipient:
+            match = next((a for a in estate.assets if a.type in {"real_estate", "vehicle"} and recipient.lower() in a.description.lower()), None)
+            if match:
+                return f"Property for transfer: {match.description}" + (f", estimated value ${match.estimatedValue:,.2f}" if match.estimatedValue else "")
         assets = [asset.description for asset in estate.assets if asset.type in {"real_estate", "vehicle"}]
         return f"Transfer-related assets:\n{_bullets(assets or ['[property address or asset description]'])}"
     return "Executor and estate identity facts are the relevant context."

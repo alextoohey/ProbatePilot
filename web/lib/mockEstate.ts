@@ -84,6 +84,7 @@ export const mockEstate: EstateState = {
       dismissed: false,
     },
   ],
+  letters: [],
   phase: 2,
   createdAt: "2026-06-20T00:00:00Z",
   updatedAt: "2026-06-20T00:00:00Z",

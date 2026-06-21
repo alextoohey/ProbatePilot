@@ -1,6 +1,7 @@
 import {
   chatHistoryResponseSchema,
   chatSuggestionsResponseSchema,
+  notifyEmailResponseSchema,
   chatRequestSchema,
   completeAlertRequestSchema,
   chatSessionResponseSchema,
@@ -11,6 +12,8 @@ import {
   generateLetterRequestSchema,
   generateLetterResponseSchema,
   parseDocumentResponseSchema,
+  saveLetterRequestSchema,
+  saveLetterResponseSchema,
   parseDocumentsResponseSchema,
   seedResponseSchema,
 } from "./schemas/api";
@@ -25,10 +28,12 @@ import type {
   GenerateLetterResponse,
   LoginRequest,
   MeResponse,
+  NotifyEmailResponse,
   ParseDocumentResponse,
   ParseDocumentsResponse,
   PublicUser,
   RegisterRequest,
+  SavedLetter,
 } from "@/types";
 
 const DEFAULT_ESTATE_ID = "demo-milligan";
@@ -213,6 +218,20 @@ export async function createChatSession(estateId = DEFAULT_ESTATE_ID): Promise<{
   return { session: parsed.session, messages: parsed.messages };
 }
 
+export async function sendAlertEmail(
+  estateId = DEFAULT_ESTATE_ID,
+  recipientEmail?: string | null,
+  kind: "alerts" | "weekly" = "alerts",
+): Promise<NotifyEmailResponse> {
+  const response = await fetch("/api/agent/notify/email", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ estateId, recipientEmail, kind }),
+  });
+  const payload = await response.json();
+  return notifyEmailResponseSchema.parse(payload);
+}
+
 export async function openChatStream(request: ChatRequest): Promise<ReadableStream<Uint8Array> | null> {
   const response = await fetch("/api/agent/chat", {
     method: "POST",
@@ -220,6 +239,22 @@ export async function openChatStream(request: ChatRequest): Promise<ReadableStre
     body: JSON.stringify(chatRequestSchema.parse(request)),
   });
   return response.body;
+}
+
+export async function saveLetter(
+  estateId: string,
+  letterType: string,
+  draft: string,
+  recipientName?: string | null,
+): Promise<SavedLetter> {
+  const request = saveLetterRequestSchema.parse({ estateId, letterType, draft, recipientName });
+  const response = await fetch("/api/agent/save-letter", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  const payload = await response.json();
+  return saveLetterResponseSchema.parse(payload).letter;
 }
 
 export async function generateLetter(

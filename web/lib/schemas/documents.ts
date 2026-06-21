@@ -37,6 +37,23 @@ export const deedExtractionSchema = baseDocumentExtractionSchema.extend({
   estimatedValue: z.number().nullable().optional(),
 }).strict();
 
+export const creditorNoticeExtractionSchema = baseDocumentExtractionSchema.extend({
+  documentType: z.literal("creditor_notice"),
+  creditorName: z.string().nullable().optional(),
+  amountOwed: z.number().nullable().optional(),
+  accountNumber: z.string().nullable().optional(),
+  debtType: z.enum(["secured", "unsecured", "priority"]),
+  debts: z.array(z.object({
+    id: z.string(),
+    creditor: z.string(),
+    amount: z.number(),
+    type: z.enum(["secured", "unsecured", "priority"]),
+    notified: z.boolean(),
+    notifiedDate: z.string().nullable().optional(),
+    claimFiled: z.boolean().nullable().optional(),
+  })),
+}).strict();
+
 export const unknownDocumentExtractionSchema = baseDocumentExtractionSchema.extend({
   documentType: z.literal("unknown"),
   reason: z.string(),
@@ -46,5 +63,6 @@ export const documentExtractionSchema = z.discriminatedUnion("documentType", [
   willExtractionSchema,
   bankStatementExtractionSchema,
   deedExtractionSchema,
+  creditorNoticeExtractionSchema,
   unknownDocumentExtractionSchema,
 ]);

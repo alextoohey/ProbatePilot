@@ -96,12 +96,21 @@ class Alert(ContractModel):
     dismissed: bool = False
 
 
+class SavedLetter(ContractModel):
+    id: str
+    letterType: str
+    recipientName: str | None = None
+    draft: str
+    savedAt: str = Field(default_factory=utc_now_iso)
+
+
 class EstateState(ContractModel):
     id: str
     deceasedName: str
     dateOfDeath: str
     appointmentDate: str
     state: Literal["california"] = "california"
+    county: str | None = None
     executor: Executor
     assets: list[Asset] = Field(default_factory=list)
     debts: list[Debt] = Field(default_factory=list)
@@ -109,6 +118,7 @@ class EstateState(ContractModel):
     documents: list[UploadedDocument] = Field(default_factory=list)
     tasks: list[Task] = Field(default_factory=list)
     alerts: list[Alert] = Field(default_factory=list)
+    letters: list[SavedLetter] = Field(default_factory=list)
     phase: EstatePhase = 1
     createdAt: str = Field(default_factory=utc_now_iso)
     updatedAt: str = Field(default_factory=utc_now_iso)

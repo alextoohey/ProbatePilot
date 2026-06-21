@@ -67,3 +67,19 @@ RECORDED DATE: The date the deed was recorded with the county, in ISO format (YY
 ESTIMATED VALUE: Any stated purchase price, assessed value, or transfer value as a number in dollars. Return null if not stated.
 
 RAW CHUNKS: Split the full document text into 5–10 self-contained segments of 3–5 sentences each. Each chunk should make sense on its own. These are used for semantic search."""
+
+CREDITOR_NOTICE_EXTRACTION_PROMPT = """You are an estate administration assistant extracting structured data from a creditor notice, bill, invoice, or statement of debt.
+
+Extract every field you can find. For fields you cannot find, return null.
+
+CREDITOR NAME: The name of the creditor, billing organization, or company sending this notice (e.g. "UCSF Medical Center", "Chase Visa", "PG&E").
+
+AMOUNT OWED: The total outstanding balance or amount claimed, as a number in dollars. Do not include currency symbols. Return null if not stated.
+
+ACCOUNT NUMBER: The last 4 digits of the account or reference number, if present. Return only the last 4 digits as a string.
+
+DEBT TYPE: Classify as "secured" (backed by collateral like a mortgage or car loan), "priority" (taxes, wages), or "unsecured" (medical bills, credit cards, utilities). Default to "unsecured" if unclear.
+
+DEBTS: Build a list of debt objects. Each object must have: id (generate a uuid-style string like "debt-xxxx"), creditor (the creditor name), amount (the dollar amount as a number), type (the debt type), notified (false).
+
+RAW CHUNKS: Split the full document text into 3–5 self-contained segments. Each chunk should make sense on its own. These are used for semantic search."""

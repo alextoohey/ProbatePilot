@@ -11,6 +11,7 @@ from prompts.extraction import TYPE_DETECTION_PROMPT
 from schemas.documents import DocumentExtraction, UnknownDocumentExtraction
 
 from .bank_statement import parse_bank_statement
+from .creditor_notice import parse_creditor_notice
 from .deed import parse_deed
 from .will import parse_will
 
@@ -19,7 +20,7 @@ LOGGER = logging.getLogger(__name__)
 
 # Types we can turn into structured estate facts. Claude/keyword content detection
 # is authoritative for these; everything else is filed by label only.
-PARSEABLE_TYPES = ("will", "bank_statement", "deed")
+PARSEABLE_TYPES = ("will", "bank_statement", "deed", "creditor_notice")
 
 # Aliases used to fuzzy-match a document's filename ("the title"). Ordered most- to
 # least-distinctive so the first type wins on a score tie. Keep the alias phrases
@@ -79,6 +80,8 @@ async def parse_document_text_with_type(
             extraction = await parse_bank_statement(text)
         elif document_type == "deed":
             extraction = await parse_deed(text)
+        elif document_type == "creditor_notice":
+            extraction = await parse_creditor_notice(text)
         else:
             extraction = UnknownDocumentExtraction(
                 confidence=0.2,

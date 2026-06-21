@@ -78,12 +78,21 @@ export interface Alert {
   dismissed: boolean;
 }
 
+export interface SavedLetter {
+  id: string;
+  letterType: string;
+  recipientName?: string | null;
+  draft: string;
+  savedAt: string;
+}
+
 export interface EstateState {
   id: string;
   deceasedName: string;
   dateOfDeath: string;
   appointmentDate: string;
   state: "california";
+  county?: string | null;
   executor: Executor;
   assets: Asset[];
   debts: Debt[];
@@ -91,6 +100,7 @@ export interface EstateState {
   documents: UploadedDocument[];
   tasks: Task[];
   alerts: Alert[];
+  letters: SavedLetter[];
   phase: EstatePhase;
   createdAt: string;
   updatedAt: string;

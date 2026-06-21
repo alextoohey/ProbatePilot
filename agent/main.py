@@ -31,6 +31,8 @@ from prompts.letters import (
     normalize_letter_type,
 )
 from prompts.system import build_chat_prompt
+from notify.email import build_alert_digest, build_weekly_recap, email_configured, resolve_recipient, send_email
+from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, NotifyEmailRequest, NotifyEmailResponse, ParseDocumentResponse
 from schemas.api import (
     AnyDocumentExtraction,
     ChatHistoryResponse,
@@ -44,10 +46,11 @@ from schemas.api import (
     ParseDocumentFailure,
     ParseDocumentResponse,
     ParseDocumentsResponse,
+    SaveLetterRequest,
 )
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
-from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
-from schemas.estate import Alert, Asset, EstateState, Executor, UploadedDocument, utc_now_iso
+from schemas.documents import BankStatementExtraction, CreditorNoticeExtraction, DeedExtraction, WillExtraction
+from schemas.estate import Alert, Asset, EstateState, Executor, SavedLetter, UploadedDocument, utc_now_iso
 from store.redis_client import (
     add_document,
     append_chat_session_messages,
@@ -122,6 +125,7 @@ def _create_estate_for_user(user: User, request: RegisterRequest) -> EstateState
         dateOfDeath=request.dateOfDeath or date.today().isoformat(),
         appointmentDate=date.today().isoformat(),
         executor=Executor(name=user.name, email=user.email),
+        county=user.county,
         phase=1,
     )
     return set_estate_state(estate)
@@ -305,6 +309,16 @@ def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None
                 description=description,
                 estimatedValue=extraction.balance,
             )]
+
+    elif isinstance(extraction, CreditorNoticeExtraction):
+        existing_debts = estate.debts if estate else []
+        existing_creditors = {d.creditor.lower().strip() for d in existing_debts}
+        new_debts = [
+            d for d in extraction.debts
+            if d.creditor.lower().strip() not in existing_creditors
+        ]
+        if new_debts:
+            partial["debts"] = new_debts
 
     elif isinstance(extraction, DeedExtraction) and extraction.propertyAddress:
         addr_key = extraction.propertyAddress.lower()[:30]
@@ -658,6 +672,67 @@ async def new_chat_session(estate_id: str) -> ChatSessionResponse:
         return ChatSessionResponse(estateId=estate_id, session=session, messages=[])
 
 
+def _suggestion_fallback(estate: EstateState) -> list[str]:
+    """Deterministic next-question suggestions when Claude is unavailable."""
+    out: list[str] = []
+    if estate.alerts:
+        out.append("What's the most urgent deadline?")
+    if estate.debts:
+        out.append("How much does the estate owe?")
+        unnotified = next((d for d in estate.debts if not d.notified), None)
+        if unnotified:
+            out.append(f"Do I need to notify {unnotified.creditor}?")
+    if estate.assets:
+        out.append("What is the estate worth right now?")
+    out.append("What should I do next?")
+    # De-dupe while preserving order.
+    return list(dict.fromkeys(out))
+
+
+@app.post("/chat-suggestions")
+async def chat_suggestions(request: ChatSuggestionsRequest) -> ChatSuggestionsResponse:
+    with span("route.chat_suggestions", estate_id=request.estateId, action_type="chat_suggestions"):
+        estate_state = get_estate_state(request.estateId)
+        history = [
+            {"role": m.get("role", ""), "content": m.get("content", "")}
+            for m in get_chat_history(request.estateId)
+        ]
+        suggestions = await suggest_followups(
+            estate_state.model_dump_json(),
+            history,
+            _suggestion_fallback(estate_state),
+        )
+        return ChatSuggestionsResponse(estateId=request.estateId, suggestions=suggestions[:3])
+
+
+@app.post("/notify/email")
+async def notify_email(request: NotifyEmailRequest) -> NotifyEmailResponse:
+    """Email the executor a digest of the estate's current deadline/liability alerts."""
+    with span("route.notify_email", estate_id=request.estateId, action_type="notify_email") as current_span:
+        estate_state = get_estate_state(request.estateId)
+        recipient = resolve_recipient((request.recipientEmail or estate_state.executor.email or "").strip())
+        # Fresh alerts straight from the DeadlineAgent — same source as the dashboard.
+        alerts = await run_deadline_agent(request.estateId)
+        if request.kind == "weekly":
+            subject, body = build_weekly_recap(estate_state, alerts)
+        else:
+            subject, body = build_alert_digest(estate_state, alerts)
+        result = send_email(recipient, subject, body)
+        set_span_attribute(current_span, "email_configured", email_configured())
+        set_span_attribute(current_span, "email_sent", bool(result.get("sent")))
+        set_span_attribute(current_span, "alert_count", len(alerts))
+        set_span_attribute(current_span, "email_kind", request.kind)
+        return NotifyEmailResponse(
+            estateId=request.estateId,
+            sent=bool(result.get("sent")),
+            reason=str(result.get("reason", "unknown")),
+            recipient=recipient or None,
+            alertCount=len(alerts),
+            subject=subject,
+            body=body,
+        )
+
+
 @app.post("/generate-letter")
 async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
     letter_type = normalize_letter_type(request.letterType, allow_custom=True)
@@ -682,3 +757,15 @@ async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
             estate_id=request.estateId,
         )
         return {"estateId": request.estateId, "letterType": letter_type, "draft": draft}
+
+
+@app.post("/save-letter")
+async def save_letter(request: SaveLetterRequest) -> dict[str, object]:
+    letter = SavedLetter(
+        id=f"letter-{uuid.uuid4().hex[:8]}",
+        letterType=request.letterType,
+        recipientName=request.recipientName,
+        draft=request.draft,
+    )
+    merge_estate_state(request.estateId, {"letters": [letter.model_dump()]})
+    return {"estateId": request.estateId, "letter": letter}

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { documentExtractionSchema } from "./documents";
-import { alertSchema, estateStateSchema } from "./estate";
+import { alertSchema, estateStateSchema, savedLetterSchema } from "./estate";
 
 export const searchResultSchema = z.object({
   text: z.string(),
@@ -80,6 +80,18 @@ export const chatHistoryResponseSchema = z.object({
   messages: z.array(chatMessageSchema),
 }).strict();
 
+export const saveLetterRequestSchema = z.object({
+  estateId: z.string(),
+  letterType: z.string(),
+  recipientName: z.string().nullable().optional(),
+  draft: z.string(),
+}).strict();
+
+export const saveLetterResponseSchema = z.object({
+  estateId: z.string(),
+  letter: savedLetterSchema,
+}).strict();
+
 export const chatSessionSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -103,6 +115,16 @@ export const chatSessionResponseSchema = z.object({
 export const chatSuggestionsResponseSchema = z.object({
   estateId: z.string(),
   suggestions: z.array(z.string()),
+}).strict();
+
+export const notifyEmailResponseSchema = z.object({
+  estateId: z.string(),
+  sent: z.boolean(),
+  reason: z.string(),
+  recipient: z.string().nullable().optional(),
+  alertCount: z.number().int(),
+  subject: z.string(),
+  body: z.string(),
 }).strict();
 
 export const estateResponseSchema = z.object({

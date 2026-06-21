@@ -419,7 +419,7 @@ def merge_estate_state(estate_id: str, partial: dict[str, Any]) -> EstateState:
     except KeyError:
         estate = _blank_estate_state(estate_id, partial)
 
-    append_keys = {"assets", "debts", "beneficiaries", "documents", "tasks", "alerts"}
+    append_keys = {"assets", "debts", "beneficiaries", "documents", "tasks", "alerts", "letters"}
     estate_payload = estate.model_dump()
 
     for key, value in _plain(partial).items():

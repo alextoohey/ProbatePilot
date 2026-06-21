@@ -52,6 +52,20 @@ function toDisplayAlert(alert: BackendAlert, guidanceAlerts: DesignAlert[]): Des
   };
 }
 
+const NOTIF_PREFS_KEY = "ec:notifPrefs";
+const DEFAULT_NOTIF_PREFS: NotifPrefs = { all: true, deadlines: true, weekly: true, email: false };
+
+// Notification preferences persist in localStorage so they survive reloads.
+function loadNotifPrefs(): NotifPrefs {
+  if (typeof window === "undefined") return DEFAULT_NOTIF_PREFS;
+  try {
+    const raw = window.localStorage.getItem(NOTIF_PREFS_KEY);
+    return raw ? { ...DEFAULT_NOTIF_PREFS, ...(JSON.parse(raw) as Partial<NotifPrefs>) } : DEFAULT_NOTIF_PREFS;
+  } catch {
+    return DEFAULT_NOTIF_PREFS;
+  }
+}
+
 // The agent owns the canonical estate shape; the ported UI screens read the
 // lighter EstateProfile/ExecutorProfile shapes. Map the real, logged-in data
 // into those so login reflects who you actually are.
@@ -96,10 +110,14 @@ export function AppShell() {
   const [loading, setLoading] = React.useState(true);
   const [showCreate, setShowCreate] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
-  const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>({ all: true, deadlines: true, weekly: true, email: false });
+  const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>(loadNotifPrefs);
   const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[] | null>(null);
   const [liveEstate, setLiveEstate] = React.useState<EstateState | null>(null);
   const [liveAlertsFailed, setLiveAlertsFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    try { window.localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(notifPrefs)); } catch { /* ignore */ }
+  }, [notifPrefs]);
   const [completingId, setCompletingId] = React.useState<string | null>(null);
   const [completionError, setCompletionError] = React.useState<string | null>(null);
   const E = DEMO_ESTATE;
@@ -322,7 +340,7 @@ export function AppShell() {
             <span style={{ color: "var(--text-strong)", fontWeight: 600 }}>{crumb}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <NotificationsMenu prefs={notifPrefs} setPrefs={setNotifPrefs} />
+            <NotificationsMenu prefs={notifPrefs} setPrefs={setNotifPrefs} alerts={liveAlerts ?? []} estateId={active.id} executorEmail={profile.email} />
           </div>
         </div>
         <main style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>{body}</main>
