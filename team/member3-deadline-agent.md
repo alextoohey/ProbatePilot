@@ -75,7 +75,7 @@ and the reasoning prompt.
 
 ### RAG chat (`POST /chat`, streamed)
 The conversational endpoint. Embed the incoming message (Member 1's helper), vector-search
-Redis (Member 2's helper, filtered by `estateId`), load estate state, and assemble the
+Redis (Member 2's helper, scoped by `estateId`), load estate state, and assemble the
 system prompt (`agent/prompts/system.py`,
 [project_overview.md §8](../project_overview.md#8-system-prompt-template)). **Prompt-cache**
 the stable prefix (base instructions + estate state) so repeated turns are cheap. Stream

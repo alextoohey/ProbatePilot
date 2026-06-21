@@ -27,7 +27,7 @@ web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Py
 - **agent/** — Python · FastAPI · Anthropic (`claude-opus-4-8`, `claude-sonnet-4-6`) ·
   OpenAI embeddings · Pydantic · Arize Phoenix
 - **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
-- **shared** — Redis (Upstash / Redis Cloud): KV estate state + vector index
+- **shared** — Redis Cloud: KV estate state + Redis 8 Vector Sets for document retrieval
 
 ## Repo layout
 - [`CLAUDE.md`](CLAUDE.md) — working instructions for Claude / coding agents

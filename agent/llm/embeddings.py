@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 
 
-VECTOR_SIZE = 16
+VECTOR_SIZE = 1536
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -20,6 +20,10 @@ def embed_query(text: str) -> list[float]:
 
 
 def _embed_one(text: str) -> list[float]:
-    digest = hashlib.sha256(text.encode("utf-8")).digest()
-    return [((digest[index] / 255) * 2) - 1 for index in range(VECTOR_SIZE)]
-
+    values: list[float] = []
+    counter = 0
+    while len(values) < VECTOR_SIZE:
+        digest = hashlib.sha256(f"{counter}:{text}".encode("utf-8")).digest()
+        values.extend(((byte / 255) * 2) - 1 for byte in digest)
+        counter += 1
+    return values[:VECTOR_SIZE]

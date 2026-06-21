@@ -1,7 +1,7 @@
 # ClearPath Estate — Dev Commands
 # Run from the repo root.
 
-.PHONY: install install-agent install-web dev dev-agent dev-web seed typecheck lint help
+.PHONY: install install-agent install-web dev dev-agent dev-web seed test test-agent test-web-contracts typecheck lint help
 
 # ── Setup ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,14 @@ health:  ## Check the agent is up
 	curl -s http://localhost:8000/health
 
 # ── Code quality ──────────────────────────────────────────────────────────────
+
+test: test-agent test-web-contracts  ## Run Python and TypeScript contract tests
+
+test-agent:  ## Run Member 1/2 Python tests
+	cd agent && STORE_BACKEND=memory uv run pytest ../tests/member1 ../tests/member2
+
+test-web-contracts:  ## Run TypeScript/Zod contract tests
+	cd web && npm run test:contracts
 
 typecheck:  ## TypeScript typecheck (web)
 	cd web && npm run typecheck

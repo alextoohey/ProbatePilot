@@ -57,16 +57,16 @@ async def parse_document(
     text = content.decode("utf-8", errors="ignore")
     extraction = await parse_document_text(text)
     embeddings = embed_texts(extraction.rawChunks)
+    add_document(
+        estateId,
+        UploadedDocument(id=f"doc-{file.filename}", fileName=file.filename or "upload", documentType=extraction.documentType),
+    )
     upsert_vectors(
         estateId,
         extraction.rawChunks,
         embeddings,
         source=file.filename,
         document_type=extraction.documentType,
-    )
-    add_document(
-        estateId,
-        UploadedDocument(id=f"doc-{file.filename}", fileName=file.filename or "upload", documentType=extraction.documentType),
     )
     alerts = await run_deadline_agent(estateId)
     return ParseDocumentResponse(estateId=estateId, extraction=extraction, alerts=alerts)
@@ -78,7 +78,7 @@ async def chat(request: ChatRequest) -> StreamingResponse:
     matches = semantic_search(request.estateId, embed_query(request.message), top_k=request.topK)
     prompt = build_chat_prompt(
         estate_state.model_dump_json(),
-        [match["text"] for match in matches],
+        [match.text for match in matches],
     )
 
     async def events():

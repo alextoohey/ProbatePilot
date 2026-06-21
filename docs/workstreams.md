@@ -38,11 +38,12 @@ Stable dependencies available now:
 
 - Pydantic estate, alert, task, document, and API models are importable.
 - TypeScript interfaces and Zod schemas mirror the core shapes.
-- The in-memory store can be replaced with Redis without changing callers.
+- Redis Cloud KV is wired behind the store helpers, and Redis 8 Vector Sets power
+  semantic retrieval when `STORE_BACKEND=redis_cloud`.
 - `/seed` exists and is idempotent for `demo-milligan`.
 
-Before real demo usage, replace memory storage with Redis KV/vector search and add the
-integration check described in `docs/database.md`.
+Before real demo usage, keep the seed/read and upsert/search integration checks in
+`docs/database.md` passing against Redis Cloud.
 
 ## Member 3: DeadlineAgent + Reasoning
 
@@ -84,4 +85,3 @@ Stable dependencies available now:
 
 Build UI against the typed client first; swap stub voice/Sentry behavior behind
 `web/lib/deepgram.ts` and `web/lib/sentry.ts`.
-

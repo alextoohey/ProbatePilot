@@ -1,6 +1,15 @@
 import type { AnyDocumentExtraction } from "./documents";
 import type { Alert, EstateState } from "./estate";
 
+export interface SearchResult {
+  text: string;
+  score: number;
+  source?: string | null;
+  documentType?: string | null;
+  chunkIndex?: number | null;
+  estateId: string;
+}
+
 export interface ParseDocumentResponse {
   estateId: string;
   extraction: AnyDocumentExtraction;
@@ -37,4 +46,3 @@ export interface GenerateLetterResponse {
 export interface EstateResponse {
   estate: EstateState;
 }
-

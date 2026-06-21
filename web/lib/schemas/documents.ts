@@ -4,7 +4,7 @@ import { assetSchema, beneficiarySchema } from "./estate";
 const baseDocumentExtractionSchema = z.object({
   confidence: z.number().min(0).max(1),
   rawChunks: z.array(z.string()),
-});
+}).strict();
 
 export const willExtractionSchema = baseDocumentExtractionSchema.extend({
   documentType: z.literal("will"),
@@ -14,7 +14,7 @@ export const willExtractionSchema = baseDocumentExtractionSchema.extend({
   trustClauses: z.array(z.string()),
   specialInstructions: z.array(z.string()),
   codicils: z.array(z.string()),
-});
+}).strict();
 
 export const bankStatementExtractionSchema = baseDocumentExtractionSchema.extend({
   documentType: z.literal("bank_statement"),
@@ -24,7 +24,7 @@ export const bankStatementExtractionSchema = baseDocumentExtractionSchema.extend
   balance: z.number().nullable().optional(),
   statementDate: z.string().nullable().optional(),
   notableTransactions: z.array(z.string()),
-});
+}).strict();
 
 export const deedExtractionSchema = baseDocumentExtractionSchema.extend({
   documentType: z.literal("deed"),
@@ -35,12 +35,12 @@ export const deedExtractionSchema = baseDocumentExtractionSchema.extend({
   grantee: z.string().nullable().optional(),
   recordedDate: z.string().nullable().optional(),
   estimatedValue: z.number().nullable().optional(),
-});
+}).strict();
 
 export const unknownDocumentExtractionSchema = baseDocumentExtractionSchema.extend({
   documentType: z.literal("unknown"),
   reason: z.string(),
-});
+}).strict();
 
 export const documentExtractionSchema = z.discriminatedUnion("documentType", [
   willExtractionSchema,
@@ -48,4 +48,3 @@ export const documentExtractionSchema = z.discriminatedUnion("documentType", [
   deedExtractionSchema,
   unknownDocumentExtractionSchema,
 ]);
-

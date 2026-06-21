@@ -6,7 +6,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:contracts": "tsc -p ../tests/tsconfig.web.json && NODE_PATH=./node_modules node ../tests/.compiled/tests/member2_web_contracts.test.js"
   },
   "dependencies": {
     "@deepgram/sdk": "^3.8.0",
@@ -29,4 +30,3 @@
     "typescript": "^5.5.0"
   }
 }
-

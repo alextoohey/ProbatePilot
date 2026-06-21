@@ -29,7 +29,7 @@ language for what it is best at; do not collapse everything into one stack.
             │        Redis (KV estate state + vector search)        │
             └───────────────────────┬──────────────────────────────┘
                                     ▼
-                          Upstash / Redis Cloud
+                          Redis Cloud
 ```
 
 - **Python (`agent/`)** owns all Claude reasoning, document parsing, embeddings, the
@@ -61,8 +61,8 @@ language for what it is best at; do not collapse everything into one stack.
 - **Validation**: Zod — mirrors the Pydantic contract for anything crossing the wire
 
 ### Shared
-- **State + vectors**: Redis (Upstash for serverless ease, or Redis Cloud for the
-  sponsor credits). KV holds estate state; a vector index powers RAG / agent memory.
+- **State + vectors**: Redis Cloud. KV holds estate state; Redis 8 Vector Sets power RAG /
+  agent memory with 1536-dimensional `text-embedding-3-small` vectors.
 
 ---
 

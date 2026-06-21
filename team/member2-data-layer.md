@@ -62,8 +62,10 @@ This is the *only* place Redis is touched. Expose a small, well-named surface:
 - A `merge_estate_state` that deep-merges a partial update into the current state and
   creates a blank estate if none exists (Member 1 calls this from the parse pipeline).
 
-Choose Upstash (simplest for serverless) or Redis Cloud (sponsor credits) — either works;
-keep the choice behind this module so a switch is a one-file change.
+Use Redis Cloud for the hackathon sponsor story. The current implementation stores estate
+KV under `estate:{id}` and uses Redis 8 Vector Sets under `estate:{id}:chunks`, with
+`text-embedding-3-small` vectors at 1536 dimensions. Keep the provider details behind
+this module so a later switch is a one-file change.
 
 ### Step 3 — Seed data (`agent/seed/demo_estate.py`)
 The demo estate (`demo-milligan`,
@@ -96,13 +98,14 @@ reliable.
 - [ ] `redis_client.py` exposes get/set/merge estate, upsert/search vectors (filtered by
       `estateId`), and read/write alerts.
 - [ ] `POST /seed` writes DEMO_ESTATE and round-trips (write → read back) without error.
-- [ ] Both KV and the vector index connect and are verified by a seed-then-read check.
+- [ ] Both KV and Redis Vector Sets connect and are verified by a seed-then-read +
+      upsert-then-search check.
 
 ---
 
 ## Sponsor Hooks You Unlock
 - **Redis** — your module *is* the Redis story: vector search as agent memory + retrieval,
-  filtered per `estateId`, not caching. Make search return text **and** metadata
+  scoped per `estateId`, not caching. Make search return text **and** metadata
   (score/source) so the chat can cite documents.
 - **Anthropic / Arize** — airtight Pydantic validation means Claude outputs are typed and
   trustworthy before they ever reach Redis; bad outputs fail loudly and show up in traces.

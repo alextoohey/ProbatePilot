@@ -1,34 +1,43 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from .documents import BankStatementExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
-from .estate import Alert, EstateState
+from .estate import Alert, ContractModel, EstateState
 
 AnyDocumentExtraction = WillExtraction | BankStatementExtraction | DeedExtraction | UnknownDocumentExtraction
 
 
-class ParseDocumentResponse(BaseModel):
+class SearchResult(ContractModel):
+    text: str
+    score: float
+    source: str | None = None
+    documentType: str | None = None
+    chunkIndex: int | None = None
+    estateId: str
+
+
+class ParseDocumentResponse(ContractModel):
     estateId: str
     extraction: AnyDocumentExtraction
     alerts: list[Alert] = Field(default_factory=list)
 
 
-class DeadlineAgentRequest(BaseModel):
+class DeadlineAgentRequest(ContractModel):
     estateId: str = "demo-milligan"
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(ContractModel):
     estateId: str = "demo-milligan"
     message: str
     topK: int = 5
 
 
-class GenerateLetterRequest(BaseModel):
+class GenerateLetterRequest(ContractModel):
     estateId: str = "demo-milligan"
     letterType: str = "creditor_notice"
     recipientName: str | None = None
 
 
-class EstateResponse(BaseModel):
+class EstateResponse(ContractModel):
     estate: EstateState

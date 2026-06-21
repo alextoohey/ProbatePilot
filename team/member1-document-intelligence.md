@@ -70,8 +70,8 @@ for type detection, then dispatches to the right parser. Handle the `unknown` ca
 Accept a multipart file upload, then:
 1. Extract text (PDF) or prepare image/PDF content blocks for Claude vision (scans).
 2. Detect the document type → run the matching parser → get a validated extraction.
-3. Embed `rawChunks` and upsert them to the Redis vector index (Member 2's helper),
-   filtered by `estateId`.
+3. Embed `rawChunks` and upsert them to Redis Vector Sets (Member 2's helper), scoped by
+   `estateId`.
 4. Merge the structured facts into estate state (Member 2's merge helper).
 5. Trigger the DeadlineAgent to re-evaluate (Member 3's entrypoint).
 6. Return `{ extraction, alerts }`.
