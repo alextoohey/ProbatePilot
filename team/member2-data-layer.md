@@ -51,8 +51,8 @@ Everything you own is now implemented; this section records the shape of it:
 - `agent/store/redis_client.py` — the full stable API (`get_estate_state`,
   `set_estate_state`, `merge_estate_state`, `upsert_vectors`, `semantic_search`,
   `write_alerts`, `get_alerts`, `add_document`, `seed_demo_estate`, plus user/session and
-  research-run helpers), implemented across **three backends** (`memory`, `upstash`,
-  `redis_cloud`) behind one interface.
+  research-run helpers), implemented across **three backends** (`memory`, `redis_cloud`,
+  `upstash`) behind one interface.
 - `agent/seed/demo_estate.py` — `DEMO_ESTATE` object complete. `POST /seed` works.
 - `web/types/` and `web/lib/schemas/` — TS types and Zod schemas mirroring the Pydantic
   models.
@@ -74,10 +74,10 @@ Read through `agent/schemas/` and `web/types/`. The core shapes are done; your j
 other members import and call them without caring which store is live. The env var
 `STORE_BACKEND` in `agent/.env` selects the implementation:
 - `STORE_BACKEND=memory` — default, works with no credentials (Python dicts)
-- `STORE_BACKEND=upstash` — Upstash Redis REST (`upstash-redis`) + Upstash Vector
-  (`upstash-vector`) — the default cloud path
 - `STORE_BACKEND=redis_cloud` — Redis Cloud KV + Redis 8 Vector Sets via the `redis`
-  Python client (`REDIS_URL`)
+  Python client (`REDIS_URL`) — the cloud path this project runs on
+- `STORE_BACKEND=upstash` — Upstash Redis REST (`upstash-redis`) + Upstash Vector
+  (`upstash-vector`) — also supported
 
 All three store estate KV under `estate:{id}` and document chunks under
 `estate:{id}:chunks`, with `text-embedding-3-small` vectors at 1536 dimensions. Provider
@@ -103,7 +103,7 @@ is wired correctly before everyone depends on it.
 | You need from… | What |
 |----------------|------|
 | **Member 1** | Confirm any extraction fields they need added to `agent/schemas/documents.py` |
-| **Redis credentials** | Upstash or Redis Cloud credentials before you can replace the in-memory store |
+| **Redis credentials** | Redis Cloud or Upstash credentials before you can replace the in-memory store |
 
 | Others need from you | What |
 |----------------------|------|
@@ -121,7 +121,7 @@ is wired correctly before everyone depends on it.
 - [ ] `redis_client.py` exposes get/set/merge estate, upsert/search vectors (filtered by
       `estateId`), and read/write alerts.
 - [ ] `POST /seed` writes DEMO_ESTATE and round-trips (write → read back) without error.
-- [ ] KV and the vector index (Upstash Vector or Redis 8 Vector Sets) connect and are
+- [ ] KV and the vector index (Redis 8 Vector Sets or Upstash Vector) connect and are
       verified by a seed-then-read + upsert-then-search check.
 
 ---

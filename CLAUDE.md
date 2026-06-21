@@ -38,8 +38,8 @@ language for what it is best at; do not collapse everything into one stack.
             │        Redis (KV estate state + vector search)        │
             └───────────────────────┬──────────────────────────────┘
                                     ▼
-                   Upstash Redis + Upstash Vector
-              (Redis Cloud / in-memory backends also supported)
+              Redis Cloud (KV + Redis 8 Vector Sets)
+               (Upstash / in-memory backends also supported)
 ```
 
 - **Python (`agent/`)** owns all Claude reasoning, document parsing, embeddings, the
@@ -81,9 +81,9 @@ language for what it is best at; do not collapse everything into one stack.
 - **State + vectors**: KV holds estate state; a vector store powers RAG / agent memory
   with 1536-dimensional `text-embedding-3-small` vectors. `agent/store/redis_client.py`
   supports three interchangeable backends behind one API, selected by `STORE_BACKEND`:
-  `upstash` (Upstash Redis REST + Upstash Vector — the default cloud path), `redis_cloud`
-  (Redis Cloud KV + Redis 8 Vector Sets), and `memory` (in-process fallback for offline
-  dev). `make`/`.env.example` default to `memory`.
+  `redis_cloud` (Redis Cloud KV + Redis 8 Vector Sets — the cloud path this project runs
+  on), `upstash` (Upstash Redis REST + Upstash Vector — also supported), and `memory`
+  (in-process fallback for offline dev). `make`/`.env.example` default to `memory`.
 
 ---
 

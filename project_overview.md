@@ -75,9 +75,10 @@ memory.** Each team member works mostly in one language.
   a vector index holds embedded document chunks under `estate:{id}:chunks`, with chunk
   text/source stored as attributes/metadata. `text-embedding-3-small` produces
   1536-dimensional vectors. The store layer supports three interchangeable backends via
-  `STORE_BACKEND`: **Upstash** (Upstash Redis REST + Upstash Vector — the default cloud
-  path), **Redis Cloud** (KV + Redis 8 Vector Sets), and **memory** (offline dev). This is
-  **agent memory + retrieval**, which is exactly what the Redis prize asks for.
+  `STORE_BACKEND`: **Redis Cloud** (KV + Redis 8 Vector Sets — the cloud path this project
+  runs on), **Upstash** (Upstash Redis REST + Upstash Vector — also supported), and
+  **memory** (offline dev). This is **agent memory + retrieval**, which is exactly what the
+  Redis prize asks for.
 - **Auth & sessions** also live in this store: bcrypt-hashed accounts and cookie sessions
   (`agent/auth/`).
 
@@ -116,7 +117,7 @@ memory.** Each team member works mostly in one language.
 | Sponsor | Prize | What must be true at demo |
 |---------|-------|---------------------------|
 | **Anthropic** | $5k API credits + office hours | Built with Claude; a true agent (DeadlineAgent) doing hard, proactive reasoning on a meaningful human problem. |
-| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. KV holds the live state graph; a vector index powers per-estate retrieval (Upstash by default; Redis Cloud + Redis 8 Vector Sets also supported). |
+| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. KV holds the live state graph; a vector index powers per-estate retrieval (Redis Cloud + Redis 8 Vector Sets in use; Upstash also supported). |
 | **Deepgram** | Nintendo Switch 2 / member | STT + TTS demonstrably essential — the executor uses voice during a simulated bank phone call. |
 | **Sentry** | Nintendo Switch 2 / member | Observability on the web layer + a team that course-corrects under pressure. ~30 min of setup. |
 | **Phoenix** | $1k | Phoenix tracing on the Python agent that *visibly improves the app* (catches a bad extraction / slow tool call during the build). |
@@ -151,7 +152,7 @@ clearpath-estate/
 │   │   ├── claude.py               # Anthropic client + extract/stream/agent helpers
 │   │   └── embeddings.py           # OpenAI embedding calls
 │   ├── store/
-│   │   └── redis_client.py         # KV + vector helpers (memory/upstash/redis_cloud)
+│   │   └── redis_client.py         # KV + vector helpers (memory/redis_cloud/upstash)
 │   ├── auth/
 │   │   └── security.py             # bcrypt password hashing + cookie sessions
 │   ├── schemas/                    # Pydantic models (estate, api, documents, auth)

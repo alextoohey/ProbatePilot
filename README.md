@@ -44,7 +44,7 @@ web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Py
   · Phoenix tracing + LLM-as-judge evals
 - **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
 - **shared** — Redis: KV estate state + vector search for document retrieval, behind a
-  store layer that supports Upstash (default cloud), Redis Cloud, or in-memory backends
+  store layer that supports Redis Cloud (cloud path in use), Upstash, or in-memory backends
 
 ## Repo layout
 - [`CLAUDE.md`](CLAUDE.md) — working instructions for Claude / coding agents
@@ -76,7 +76,7 @@ make seed
 
 Fill in your API keys in `agent/.env` and `web/.env.local` after running `make env`.
 Minimum to start: `ANTHROPIC_API_KEY` in `agent/.env`. The store defaults to
-`STORE_BACKEND=memory`, so Redis/Upstash is optional for local dev; voice (Deepgram),
+`STORE_BACKEND=memory`, so Redis Cloud is optional for local dev; voice (Deepgram),
 email (Resend), and observability (Phoenix/Sentry) degrade gracefully when their keys are
 unset — voice and email return previews instead of failing.
 

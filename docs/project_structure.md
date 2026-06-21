@@ -36,7 +36,7 @@ agent/
 ├── schemas/                # Member 2: Pydantic contracts (estate, api, documents, auth)
 ├── seed/                   # Member 2: demo estate reset
 ├── tests/                  # pytest suite (rules, agents, chat, letters, …)
-└── store/                  # Member 2: Redis boundary (memory / Upstash / Redis Cloud)
+└── store/                  # Member 2: Redis boundary (memory / Redis Cloud / Upstash)
 ```
 
 ## Web App: `web/`
@@ -55,7 +55,7 @@ The service is feature-complete, but every external dependency degrades graceful
 app still boots and demos without a full set of credentials:
 
 - `agent/store/redis_client.py` runs in memory by default (`STORE_BACKEND=memory`) and
-  switches to Upstash or Redis Cloud when credentials are present.
+  switches to Redis Cloud (in use) or Upstash when credentials are present.
 - `agent/llm/claude.py` and `agent/llm/embeddings.py` no-op into deterministic fallbacks
   when `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are unset.
 - `agent/documents/` falls back to heuristic extraction when Claude is unavailable.

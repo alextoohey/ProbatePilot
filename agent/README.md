@@ -14,7 +14,7 @@ list.
 - `researcher/` — the weekly probate-law ResearchAgent
 - `rules/` — the California probate ruleset
 - `schemas/` — Pydantic contracts (estate, api, documents, auth)
-- `store/` — KV + vector boundary (memory / Upstash / Redis Cloud)
+- `store/` — KV + vector boundary (memory / Redis Cloud / Upstash)
 - `auth/` — bcrypt password hashing + cookie sessions
 - `notify/` — Resend weekly recap / alert digest
 - `observability/` + `evals/` — Phoenix tracing and the LLM-as-judge eval
@@ -34,7 +34,7 @@ uv run uvicorn main:app --reload --port 8000
 ```
 
 The store defaults to `STORE_BACKEND=memory`, so the service boots and runs offline; set
-`STORE_BACKEND=upstash` (or `redis_cloud`) with the matching credentials for a real store.
+`STORE_BACKEND=redis_cloud` (or `upstash`) with the matching credentials for a real store.
 AI helpers no-op gracefully when `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are unset, so the
 deterministic fallbacks still serve the demo.
 

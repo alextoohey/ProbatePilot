@@ -42,8 +42,8 @@ Stable dependencies available now:
 
 - Pydantic estate, alert, task, document, and auth models are importable.
 - TypeScript interfaces and Zod schemas mirror the core shapes.
-- KV is wired behind the store helpers, with vector search via Upstash Vector (default) or
-  Redis 8 Vector Sets (`STORE_BACKEND=redis_cloud`), and an in-memory fallback.
+- KV is wired behind the store helpers, with vector search via Redis 8 Vector Sets
+  (`STORE_BACKEND=redis_cloud`, in use) or Upstash Vector, and an in-memory fallback.
 - `/seed` exists and is idempotent for `demo-milligan`.
 
 Keep the seed/read and upsert/search integration checks in `docs/database.md` passing

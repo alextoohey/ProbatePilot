@@ -11,10 +11,11 @@ selected by `STORE_BACKEND`:
 
 - `STORE_BACKEND=memory` — local in-memory KV + vector fallback for offline development
   (the `.env.example` default).
-- `STORE_BACKEND=upstash` — Upstash Redis REST for KV plus Upstash Vector for RAG chunks.
-  This is the default cloud path.
 - `STORE_BACKEND=redis_cloud` — Redis Cloud stores canonical estate KV and uses Redis 8
-  Vector Sets (`VADD` / `VSIM`) for per-estate semantic retrieval.
+  Vector Sets (`VADD` / `VSIM`) for per-estate semantic retrieval. This is the cloud path
+  this project runs on.
+- `STORE_BACKEND=upstash` — Upstash Redis REST for KV plus Upstash Vector for RAG chunks.
+  Also supported.
 
 ## Ownership
 
@@ -77,7 +78,7 @@ should stay stable.
 All three backends are implemented behind the stable store API. To stand up a real Redis
 store, this is the checklist the implementation satisfies:
 
-1. Pick one Redis provider: Upstash (default) or Redis Cloud.
+1. Pick one Redis provider: Redis Cloud (in use) or Upstash.
 2. For Redis Cloud, confirm `VADD`, `VSIM`, and `VDIM` commands are available.
    For Upstash, create the Vector index using dimension `1536`.
 3. Store `EstateState` as JSON at `estate:{estateId}`.
