@@ -2,15 +2,9 @@ import {
   chatHistoryResponseSchema,
   chatSuggestionsResponseSchema,
   chatRequestSchema,
-<<<<<<< HEAD
-  chatSessionResponseSchema,
-  chatSessionsResponseSchema,
-  completeAlertRequestSchema,
-=======
   completeAlertRequestSchema,
   chatSessionResponseSchema,
   chatSessionsResponseSchema,
->>>>>>> ce0949fe027c67f793b4543ef187c74706a1c96f
   deadlineAgentRequestSchema,
   deadlineAgentResponseSchema,
   estateResponseSchema,
