@@ -23,10 +23,14 @@ from observability.arize import get_tracing_status, init_tracing, set_span_attri
 from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
 from prompts.system import build_chat_prompt
 <<<<<<< HEAD
+<<<<<<< HEAD
 from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
 =======
 from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, CompleteAlertRequest, DeadlineAgentRequest, EstateResponse, GenerateLetterRequest, ParseDocumentResponse
 >>>>>>> sameer-new
+=======
+from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, CompleteAlertRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, EstateResponse, GenerateLetterRequest, ParseDocumentResponse
+>>>>>>> ce0949fe027c67f793b4543ef187c74706a1c96f
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Asset, EstateState, Executor, UploadedDocument, utc_now_iso
