@@ -75,6 +75,7 @@ export interface GenerateLetterRequest {
   estateId: string;
   letterType: string;
   recipientName?: string | null;
+  instructions?: string | null;
 }
 
 export interface GenerateLetterResponse {

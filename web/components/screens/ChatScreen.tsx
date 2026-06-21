@@ -4,7 +4,7 @@
 // and real Deepgram voice (hold-to-speak STT + spoken replies for voice turns).
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
-import { Avatar, Button } from "@/components/ds";
+import { Avatar, Button, Spinner } from "@/components/ds";
 import { Markdown } from "@/components/Markdown";
 import type { EstateProfile } from "@/lib/design/data";
 import { createChatSession, getChatHistory, getChatSessions, getChatSuggestions, getEstate, openChatStream } from "@/lib/agentClient";
@@ -65,6 +65,9 @@ export function ChatScreen({ estate }: Props) {
   const [draft, setDraft] = React.useState("");
   const [recording, setRecording] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  // Covers the brief flash of the placeholder greeting before the real estate
+  // and saved history load.
+  const [loading, setLoading] = React.useState(true);
   const endRef = React.useRef<HTMLDivElement>(null);
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
@@ -73,8 +76,9 @@ export function ChatScreen({ estate }: Props) {
   // history. If there's saved history, restore the conversation; otherwise show
   // a greeting built from this estate's executor, deceased, and parsed documents.
   React.useEffect(() => {
-    if (!estate.id) return;
+    if (!estate.id) { setLoading(false); return; }
     let cancelled = false;
+    setLoading(true);
     Promise.allSettled([getEstate(estate.id), getChatSessions(estate.id)]).then(async ([eRes, sRes]) => {
       if (cancelled) return;
       const estateData = eRes.status === "fulfilled" ? eRes.value : null;
@@ -94,7 +98,7 @@ export function ChatScreen({ estate }: Props) {
         const greeting = buildGreeting(estateData.deceasedName, estateData.executor?.name, estateData.documents.map((d) => d.documentType));
         setMsgs((m) => (m.length === 1 && m[0].from === "ai" ? [{ from: "ai", text: greeting }] : m));
       }
-    });
+    }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [estate.id]);
 
@@ -263,6 +267,15 @@ export function ChatScreen({ estate }: Props) {
         <p style={{ margin: "10px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)", lineHeight: "var(--leading-relaxed)" }}>
           Add a will, deed, or statement to the estate of {estate.deceasedName} and I&apos;ll answer your questions grounded in those documents, never generic advice.
         </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "var(--text-muted)" }}>
+        <Spinner size={26} />
+        <p style={{ margin: 0, fontSize: "var(--text-sm)" }}>Opening your estate chat…</p>
       </div>
     );
   }

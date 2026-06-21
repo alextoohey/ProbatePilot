@@ -26,6 +26,7 @@ export const generateLetterRequestSchema = z.object({
   estateId: z.string(),
   letterType: z.string(),
   recipientName: z.string().nullable().optional(),
+  instructions: z.string().nullable().optional(),
 }).strict();
 
 export const parseDocumentResponseSchema = z.object({

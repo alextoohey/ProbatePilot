@@ -14,6 +14,7 @@ SUPPORTED_LETTER_TYPES = {
     "property_transfer",
 }
 DEFAULT_LETTER_TYPE = "creditor_notice"
+CUSTOM_LETTER_TYPE = "custom"
 
 
 LETTER_TYPE_LABELS = {
@@ -25,10 +26,77 @@ LETTER_TYPE_LABELS = {
 }
 
 
-def normalize_letter_type(letter_type: str | None) -> str:
+def normalize_letter_type(letter_type: str | None, *, allow_custom: bool = False) -> str:
+    if allow_custom and letter_type == CUSTOM_LETTER_TYPE:
+        return CUSTOM_LETTER_TYPE
     if letter_type in SUPPORTED_LETTER_TYPES:
         return str(letter_type)
     return DEFAULT_LETTER_TYPE
+
+
+def build_custom_letter_prompt(
+    estate: EstateState,
+    instructions: str | None,
+    recipient_name: str | None = None,
+) -> str:
+    """Prompt for a letter type that isn't one of the recommended templates. The
+    executor describes what they need in free text and we ground it in the estate."""
+    recipient = recipient_name or "the intended recipient"
+    ask = (instructions or "").strip() or "a professional estate administration letter"
+    estate_json = json.dumps(estate.model_dump(mode="json"), indent=2, sort_keys=True)
+
+    return f"""Draft a sign-ready letter for an estate executor based on this request:
+"{ask}"
+
+Addressed to: {recipient}
+
+Estate facts:
+- Deceased: {estate.deceasedName}, died {estate.dateOfDeath}
+- Executor: {estate.executor.name}, email: {estate.executor.email}
+- Letters testamentary issued: {estate.appointmentDate}
+- Jurisdiction: California
+
+Full estate record (use any relevant facts, ignore the rest):
+{estate_json}
+
+Drafting rules:
+- Produce only the letter text. No preamble or commentary outside the letter.
+- Output plain text only. No markdown, no **, no --, no #, no >, no tables, no backticks.
+- Carry out the request above as faithfully as possible using the estate facts.
+- Address the letter to "{recipient}" by name; avoid placeholders unless a critical fact is truly unknown.
+- Warm, direct, professional tone. The executor may be grieving.
+- Do not give legal advice or overclaim legal authority.
+- Format as a traditional business letter: sender block, date, recipient block, salutation, body paragraphs, closing, signature.
+- End with a signature block for {estate.executor.name}, Executor of the Estate of {estate.deceasedName}.
+"""
+
+
+def build_custom_letter_fallback(
+    estate: EstateState,
+    instructions: str | None,
+    recipient_name: str | None = None,
+) -> str:
+    recipient = recipient_name or "the intended recipient"
+    ask = (instructions or "").strip() or "an estate administration matter"
+    return f"""{recipient}
+[mailing address]
+
+Re: Estate of {estate.deceasedName}
+
+Dear {recipient},
+
+I am {estate.executor.name}, executor of the Estate of {estate.deceasedName}. {estate.deceasedName} passed away on {estate.dateOfDeath}, and letters testamentary were issued on {estate.appointmentDate}.
+
+I am writing regarding {ask}.
+
+Please contact me at {estate.executor.email} with any information, forms, or requirements you need from me to proceed.
+
+Sincerely,
+
+{estate.executor.name}
+Executor of the Estate of {estate.deceasedName}
+{estate.executor.email}
+"""
 
 
 def build_letter_prompt(estate: EstateState, letter_type: str, recipient_name: str | None = None) -> str:

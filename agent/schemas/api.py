@@ -85,6 +85,8 @@ class GenerateLetterRequest(ContractModel):
     estateId: str = "demo-milligan"
     letterType: str = "creditor_notice"
     recipientName: str | None = None
+    # Free-text description for a custom letter (letterType == "custom").
+    instructions: str | None = None
 
 
 class EstateResponse(ContractModel):

@@ -307,3 +307,73 @@ export function Tooltip({ label, children, side = "top" }: { label: React.ReactN
     </span>
   );
 }
+
+// ── Spinner ─────────────────────────────────────────────────────────────────
+export function Spinner({ size = 22, stroke = 2.5, color = "var(--evergreen-600)" }: { size?: number; stroke?: number; color?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label="Loading"
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        border: `${stroke}px solid var(--border-subtle)`,
+        borderTopColor: color,
+        borderRadius: "999px",
+        animation: "ec-spin 0.7s linear infinite",
+      }}
+    />
+  );
+}
+
+// ── ProgressBar ─────────────────────────────────────────────────────────────
+// `value` (0–100) renders a determinate bar; omit it for an indeterminate sweep.
+export function ProgressBar({ value, label }: { value?: number; label?: string }) {
+  const indeterminate = value === undefined || value === null;
+  const clamped = indeterminate ? 0 : Math.max(0, Math.min(100, Math.round(value)));
+  return (
+    <div style={{ width: "100%" }}>
+      {label ? (
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+          <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{label}</span>
+          {!indeterminate ? (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)" }}>{clamped}%</span>
+          ) : null}
+        </div>
+      ) : null}
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={indeterminate ? undefined : clamped}
+        style={{ position: "relative", height: 8, borderRadius: "var(--radius-full)", background: "var(--surface-sunken)", overflow: "hidden", boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}
+      >
+        {indeterminate ? (
+          <span
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              width: "40%",
+              borderRadius: "inherit",
+              background: "linear-gradient(90deg, var(--evergreen-500), var(--evergreen-700))",
+              animation: "ec-progress-sweep 1.1s ease-in-out infinite",
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              display: "block",
+              width: `${clamped}%`,
+              height: "100%",
+              borderRadius: "inherit",
+              background: "linear-gradient(90deg, var(--evergreen-500), var(--evergreen-700))",
+              transition: "width 380ms cubic-bezier(0.2, 0, 0, 1)",
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}

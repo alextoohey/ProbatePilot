@@ -178,8 +178,9 @@ export async function generateLetter(
   letterType: string,
   estateId = DEFAULT_ESTATE_ID,
   recipientName?: string | null,
+  instructions?: string | null,
 ): Promise<GenerateLetterResponse> {
-  const request = generateLetterRequestSchema.parse({ estateId, letterType, recipientName });
+  const request = generateLetterRequestSchema.parse({ estateId, letterType, recipientName, instructions });
   const response = await fetch("/api/agent/generate-letter", {
     method: "POST",
     headers: { "content-type": "application/json" },

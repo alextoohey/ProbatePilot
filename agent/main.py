@@ -20,7 +20,14 @@ from documents.router import parse_document_text
 from llm.claude import DocumentParseError, generate_letter_draft, stream_chat, suggest_followups
 from llm.embeddings import embed_query, embed_texts
 from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
-from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
+from prompts.letters import (
+    CUSTOM_LETTER_TYPE,
+    build_custom_letter_fallback,
+    build_custom_letter_prompt,
+    build_letter_fallback,
+    build_letter_prompt,
+    normalize_letter_type,
+)
 from prompts.system import build_chat_prompt
 from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
@@ -475,7 +482,7 @@ async def chat_suggestions(request: ChatSuggestionsRequest) -> ChatSuggestionsRe
 
 @app.post("/generate-letter")
 async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
-    letter_type = normalize_letter_type(request.letterType)
+    letter_type = normalize_letter_type(request.letterType, allow_custom=True)
     with span(
         "route.generate_letter",
         estate_id=request.estateId,
@@ -483,8 +490,12 @@ async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
         letter_type=letter_type,
     ) as current_span:
         estate_state = get_estate_state(request.estateId)
-        prompt = build_letter_prompt(estate_state, letter_type, request.recipientName)
-        fallback = build_letter_fallback(estate_state, letter_type, request.recipientName)
+        if letter_type == CUSTOM_LETTER_TYPE:
+            prompt = build_custom_letter_prompt(estate_state, request.instructions, request.recipientName)
+            fallback = build_custom_letter_fallback(estate_state, request.instructions, request.recipientName)
+        else:
+            prompt = build_letter_prompt(estate_state, letter_type, request.recipientName)
+            fallback = build_letter_fallback(estate_state, letter_type, request.recipientName)
         set_span_attribute(current_span, "prompt_length", len(prompt))
         draft = await generate_letter_draft(
             prompt=prompt,
