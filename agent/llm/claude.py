@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+import json
 import logging
 import os
+import re
 from typing import Any, TypeVar
 
 import anthropic
@@ -259,6 +261,70 @@ async def stream_chat(
             response += f" You asked: {message}"
         for token in response.split(" "):
             yield token + " "
+
+
+def _parse_suggestions(text: str) -> list[str]:
+    """Pull a JSON array of strings out of the model's reply (tolerates code fences)."""
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if not match:
+        return []
+    try:
+        data = json.loads(match.group(0))
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(s).strip() for s in data if isinstance(s, str) and s.strip()]
+
+
+async def suggest_followups(
+    estate_json: str,
+    history: list[dict[str, str]],
+    fallback: list[str],
+) -> list[str]:
+    """Suggest exactly 3 short follow-up questions the executor might ask next,
+    grounded in the estate state and recent conversation. Falls back to the
+    provided deterministic list when Claude is unavailable or returns nothing."""
+    client = get_async_client()
+    if client is None:
+        return fallback[:3]
+
+    recent = history[-6:]
+    convo = "\n".join(f"{m.get('role', '')}: {m.get('content', '')}" for m in recent) or "(no messages yet)"
+    system = (
+        "You suggest the next questions an estate executor is likely to ask a chat "
+        "assistant for California probate. Use the estate state and the recent "
+        "conversation to propose EXACTLY 3 short, distinct questions (max ~9 words each) "
+        "that move the executor forward and avoid repeating what was just answered. "
+        "Ground them in this estate's real data. Respond with ONLY a JSON array of 3 strings."
+    )
+    user = f"Estate state (JSON):\n{estate_json}\n\nRecent conversation:\n{convo}"
+
+    with span(
+        "llm.suggest_followups",
+        action_type="chat_suggestions",
+        llm_provider="anthropic",
+        llm_model=DOCUMENT_MODEL,
+        history_turns=len(recent),
+    ) as current_span:
+        try:
+            response = await client.messages.create(
+                model=DOCUMENT_MODEL,
+                max_tokens=300,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+            items = _parse_suggestions(_message_text(response))
+            set_span_attribute(current_span, "suggestion_count", len(items))
+            if len(items) >= 3:
+                return items[:3]
+            # Top up from the fallback (deduped) if the model returned too few.
+            merged = items + [f for f in fallback if f not in items]
+            return merged[:3]
+        except Exception as exc:
+            set_span_error(current_span, exc)
+            LOGGER.exception("Follow-up suggestion generation failed; using fallback.")
+            return fallback[:3]
 
 
 def _asks_for_attorney_judgment(message: str) -> bool:

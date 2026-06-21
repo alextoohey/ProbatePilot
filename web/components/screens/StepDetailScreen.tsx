@@ -3,16 +3,19 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Badge, Button, Dialog } from "@/components/ds";
+import { formatAlertTimingLabel } from "@/lib/alertTiming";
 import type { Alert } from "@/lib/design/data";
 
 type Props = {
   item: Alert | null;
   completed: boolean;
+  completing?: boolean;
+  error?: string | null;
   onBack: () => void;
-  onComplete: (id: string) => void;
+  onComplete: (id: string) => Promise<void> | void;
 };
 
-export function StepDetailScreen({ item, completed, onBack, onComplete }: Props) {
+export function StepDetailScreen({ item, completed, completing = false, error = null, onBack, onComplete }: Props) {
   const I = ExecutorIcons;
   const [confirm, setConfirm] = React.useState(false);
 
@@ -32,9 +35,9 @@ export function StepDetailScreen({ item, completed, onBack, onComplete }: Props)
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "var(--space-3)" }}>
         <Badge tone={item.severity} dot>{item.severity}</Badge>
-        {typeof item.daysRemaining === "number" ? (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-muted)" }}>{item.daysRemaining} days remaining</span>
-        ) : null}
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-muted)" }}>
+          {formatAlertTimingLabel(item)}
+        </span>
       </div>
 
       <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", lineHeight: 1.15, color: "var(--text-strong)" }}>
@@ -84,12 +87,20 @@ export function StepDetailScreen({ item, completed, onBack, onComplete }: Props)
         </ol>
       </section>
 
+      {error ? (
+        <div style={{ marginTop: "var(--space-6)", padding: "var(--space-4) var(--space-5)", background: "var(--critical-bg)", border: "1px solid var(--critical-border)", borderRadius: "var(--radius-md)", color: "var(--critical-text)", fontSize: "var(--text-sm)", fontWeight: 500 }}>
+          {error}
+        </div>
+      ) : null}
+
       <div style={{ marginTop: "var(--space-10)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-4)", paddingTop: "var(--space-6)", borderTop: "1px solid var(--border-subtle)" }}>
         <Button variant="secondary" onClick={onBack}>Back</Button>
         {completed ? (
           <Badge tone="success" dot>Completed</Badge>
         ) : (
-          <Button variant="primary" leadingIcon={<I.Check size={16} />} onClick={() => setConfirm(true)}>Mark this step complete</Button>
+          <Button variant="primary" leadingIcon={<I.Check size={16} />} onClick={() => setConfirm(true)} disabled={completing}>
+            {completing ? "Marking complete..." : "Mark this step complete"}
+          </Button>
         )}
       </div>
 
@@ -98,8 +109,8 @@ export function StepDetailScreen({ item, completed, onBack, onComplete }: Props)
         title="Mark this step complete?"
         confirmLabel="Yes, mark complete"
         cancelLabel="Not yet"
-        onConfirm={() => { setConfirm(false); onComplete(item.id); }}
-        onCancel={() => setConfirm(false)}
+        onConfirm={() => { setConfirm(false); void onComplete(item.id); }}
+        onCancel={() => { if (!completing) setConfirm(false); }}
       >
         We'll move "{item.title}" off your attention list and into completed steps. You can reopen it any time, nothing is deleted.
       </Dialog>

@@ -1,6 +1,8 @@
 import {
   chatHistoryResponseSchema,
+  chatSuggestionsResponseSchema,
   chatRequestSchema,
+  completeAlertRequestSchema,
   chatSessionResponseSchema,
   chatSessionsResponseSchema,
   deadlineAgentRequestSchema,
@@ -108,6 +110,20 @@ export async function runDeadlineAgent(estateId = DEFAULT_ESTATE_ID, signal?: Ab
   return deadlineAgentResponseSchema.parse(payload).alerts;
 }
 
+export async function completeAlert(estateId = DEFAULT_ESTATE_ID, alertId: string): Promise<EstateState> {
+  const request = completeAlertRequestSchema.parse({ estateId, alertId });
+  const response = await fetch("/api/agent/complete-alert", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, "We couldn't mark that step complete."));
+  }
+  const payload = await response.json();
+  return estateResponseSchema.parse(payload).estate;
+}
+
 export async function parseDocument(
   file: File,
   estateId = DEFAULT_ESTATE_ID,
@@ -171,6 +187,18 @@ export async function getChatHistory(estateId = DEFAULT_ESTATE_ID, sessionId?: s
   return chatHistoryResponseSchema.parse(payload).messages;
 }
 
+export async function getChatSuggestions(estateId = DEFAULT_ESTATE_ID, signal?: AbortSignal): Promise<string[]> {
+  const response = await fetch("/api/agent/chat-suggestions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ estateId }),
+    signal,
+  });
+  if (!response.ok) return [];
+  const payload = await response.json();
+  return chatSuggestionsResponseSchema.parse(payload).suggestions;
+}
+
 export async function getChatSessions(estateId = DEFAULT_ESTATE_ID, signal?: AbortSignal): Promise<ChatSession[]> {
   const response = await fetch(`/api/agent/chat-sessions/${encodeURIComponent(estateId)}`, { signal });
   if (!response.ok) return [];
@@ -198,8 +226,9 @@ export async function generateLetter(
   letterType: string,
   estateId = DEFAULT_ESTATE_ID,
   recipientName?: string | null,
+  instructions?: string | null,
 ): Promise<GenerateLetterResponse> {
-  const request = generateLetterRequestSchema.parse({ estateId, letterType, recipientName });
+  const request = generateLetterRequestSchema.parse({ estateId, letterType, recipientName, instructions });
   const response = await fetch("/api/agent/generate-letter", {
     method: "POST",
     headers: { "content-type": "application/json" },

@@ -15,16 +15,36 @@ load_dotenv(".env")  # must run before any module that reads env vars at import 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
-from agents.deadline_agent import run_deadline_agent
+from agents.deadline_agent import mark_alert_complete, run_deadline_agent
 from auth.security import hash_password, new_session_token, verify_password
 from documents.pdf_reader import extract_text
 from documents.router import parse_document_text
 from llm.claude import DocumentParseError, generate_letter_draft, stream_chat
 from llm.embeddings import embed_query, embed_texts
 from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
-from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
+from prompts.letters import (
+    CUSTOM_LETTER_TYPE,
+    build_custom_letter_fallback,
+    build_custom_letter_prompt,
+    build_letter_fallback,
+    build_letter_prompt,
+    normalize_letter_type,
+)
 from prompts.system import build_chat_prompt
-from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentFailure, ParseDocumentResponse, ParseDocumentsResponse
+from schemas.api import (
+    AnyDocumentExtraction,
+    ChatHistoryResponse,
+    ChatRequest,
+    ChatSessionResponse,
+    ChatSessionsResponse,
+    CompleteAlertRequest,
+    DeadlineAgentRequest,
+    EstateResponse,
+    GenerateLetterRequest,
+    ParseDocumentFailure,
+    ParseDocumentResponse,
+    ParseDocumentsResponse,
+)
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Alert, Asset, EstateState, Executor, UploadedDocument, utc_now_iso
@@ -199,6 +219,16 @@ async def deadline_agent(request: DeadlineAgentRequest) -> dict[str, object]:
     with span("route.deadline_agent", estate_id=request.estateId, action_type="deadline_agent_run"):
         alerts = await run_deadline_agent(request.estateId)
         return {"estateId": request.estateId, "alerts": alerts}
+
+
+@app.post("/complete-alert", response_model=EstateResponse)
+async def complete_alert(request: CompleteAlertRequest) -> EstateResponse:
+    with span("route.complete_alert", estate_id=request.estateId, action_type="complete_alert", alert_id=request.alertId):
+        try:
+            estate = mark_alert_complete(request.estateId, request.alertId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return EstateResponse(estate=estate)
 
 
 ACCEPTED_CONTENT_TYPES = {
@@ -604,7 +634,7 @@ async def new_chat_session(estate_id: str) -> ChatSessionResponse:
 
 @app.post("/generate-letter")
 async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
-    letter_type = normalize_letter_type(request.letterType)
+    letter_type = normalize_letter_type(request.letterType, allow_custom=True)
     with span(
         "route.generate_letter",
         estate_id=request.estateId,
@@ -612,8 +642,12 @@ async def generate_letter(request: GenerateLetterRequest) -> dict[str, object]:
         letter_type=letter_type,
     ) as current_span:
         estate_state = get_estate_state(request.estateId)
-        prompt = build_letter_prompt(estate_state, letter_type, request.recipientName)
-        fallback = build_letter_fallback(estate_state, letter_type, request.recipientName)
+        if letter_type == CUSTOM_LETTER_TYPE:
+            prompt = build_custom_letter_prompt(estate_state, request.instructions, request.recipientName)
+            fallback = build_custom_letter_fallback(estate_state, request.instructions, request.recipientName)
+        else:
+            prompt = build_letter_prompt(estate_state, letter_type, request.recipientName)
+            fallback = build_letter_fallback(estate_state, letter_type, request.recipientName)
         set_span_attribute(current_span, "prompt_length", len(prompt))
         draft = await generate_letter_draft(
             prompt=prompt,

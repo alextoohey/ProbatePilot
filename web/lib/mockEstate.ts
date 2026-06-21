@@ -61,7 +61,10 @@ export const mockEstate: EstateState = {
       body: "The estate has assets that still need appraisal before the inventory can be filed.",
       rule: "DE-160 Inventory & Appraisal",
       daysRemaining: 9,
+      timingStatus: "dated",
       actionRequired: "Schedule appraisals and prepare the DE-160 packet.",
+      whatYouNeed: [],
+      steps: [],
       createdAt: "2026-06-20T00:00:00Z",
       dismissed: false,
     },
@@ -73,7 +76,10 @@ export const mockEstate: EstateState = {
       body: "Known creditors must receive certified notice before distributions are made.",
       rule: "CA Probate Code §9051",
       daysRemaining: 20,
+      timingStatus: "dated",
       actionRequired: "Send certified creditor notices to each known creditor.",
+      whatYouNeed: [],
+      steps: [],
       createdAt: "2026-06-20T00:00:00Z",
       dismissed: false,
     },
@@ -82,4 +88,3 @@ export const mockEstate: EstateState = {
   createdAt: "2026-06-20T00:00:00Z",
   updatedAt: "2026-06-20T00:00:00Z",
 };
-

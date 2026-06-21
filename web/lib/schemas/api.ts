@@ -15,6 +15,11 @@ export const deadlineAgentRequestSchema = z.object({
   estateId: z.string(),
 }).strict();
 
+export const completeAlertRequestSchema = z.object({
+  estateId: z.string(),
+  alertId: z.string(),
+}).strict();
+
 export const chatRequestSchema = z.object({
   estateId: z.string(),
   message: z.string(),
@@ -26,6 +31,7 @@ export const generateLetterRequestSchema = z.object({
   estateId: z.string(),
   letterType: z.string(),
   recipientName: z.string().nullable().optional(),
+  instructions: z.string().nullable().optional(),
 }).strict();
 
 export const parseDocumentResponseSchema = z.object({
@@ -92,6 +98,11 @@ export const chatSessionResponseSchema = z.object({
   estateId: z.string(),
   session: chatSessionSchema,
   messages: z.array(chatMessageSchema),
+}).strict();
+
+export const chatSuggestionsResponseSchema = z.object({
+  estateId: z.string(),
+  suggestions: z.array(z.string()),
 }).strict();
 
 export const estateResponseSchema = z.object({

@@ -5,6 +5,7 @@ import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, StatBlock, Alert, Badge, ProgressSteps, Button, Avatar } from "@/components/ds";
 import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary, type Alert as DesignAlert } from "@/lib/design/data";
 import { getEstate } from "@/lib/agentClient";
+import { formatAlertTimingLabel } from "@/lib/alertTiming";
 import { BeneficiaryModal } from "./BeneficiaryModal";
 import type { Alert as BackendAlert, EstateState } from "@/types";
 
@@ -33,11 +34,15 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
 
   // Real (non-demo) estates load their live state from the agent.
   const isReal = !!estate && !estate.seeded;
+  const currentReal = liveEstate && estate && liveEstate.id === estate.id ? liveEstate : null;
   const [real, setReal] = React.useState<EstateState | null>(null);
-  const [loadingReal, setLoadingReal] = React.useState(isReal);
+  const [loadingReal, setLoadingReal] = React.useState(isReal && !currentReal);
 
   React.useEffect(() => {
-    if (!isReal || !estate) return;
+    if (!isReal || !estate || currentReal) {
+      setLoadingReal(false);
+      return;
+    }
     let cancelled = false;
     setLoadingReal(true);
     getEstate(estate.id)
@@ -45,7 +50,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
       .catch(() => { if (!cancelled) setReal(null); })
       .finally(() => { if (!cancelled) setLoadingReal(false); });
     return () => { cancelled = true; };
-  }, [isReal, estate]);
+  }, [isReal, estate, currentReal]);
 
   // A newly created estate has no documents yet, show onboarding; once any
   // document is parsed, show the live estate built from real data.
@@ -57,8 +62,8 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
         </div>
       );
     }
-    if (real && real.documents.length > 0) {
-      return <RealDashboard real={real} />;
+    if ((currentReal || real) && (currentReal || real)!.documents.length > 0) {
+      return <RealDashboard real={currentReal || real!} onOpenStep={onOpenStep} />;
     }
     return (
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "48px 40px", display: "grid", gap: "var(--space-8)" }}>
@@ -103,8 +108,8 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
         const guidance = guidanceAlerts.find((g) => g.id === a.id);
         return {
           ...a,
-          steps: guidance?.steps || [],
-          whatYouNeed: guidance?.whatYouNeed || [],
+          steps: a.steps?.length ? a.steps : guidance?.steps || [],
+          whatYouNeed: a.whatYouNeed?.length ? a.whatYouNeed : guidance?.whatYouNeed || [],
           daysRemaining: a.daysRemaining ?? undefined,
         };
       })
@@ -122,8 +127,9 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
     ? liveEstate.debts.reduce((s, d) => s + d.amount, 0)
     : E.debts.reduce((s, d) => s + d.amount, 0);
 
-  const taskTone = { done: "success", todo: "neutral", blocked: "warning" } as const;
-  const taskLabel = { done: "Done", todo: "To do", blocked: "Blocked" } as const;
+  const taskTone = { done: "success", todo: "neutral", in_progress: "brand", blocked: "warning" } as const;
+  const taskLabel = { done: "Done", todo: "To do", in_progress: "In progress", blocked: "Blocked" } as const;
+  const displayTasks = liveEstate?.tasks?.length ? liveEstate.tasks : E.tasks;
 
   const allDone = open.length === 0;
   const currentPhase = liveEstate ? liveEstate.phase : E.phase;
@@ -195,7 +201,8 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
             </Card>
           ) : null}
           {!liveAlertsLoading && !liveAlertsFailed && open.map((a) => (
-            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining ?? undefined}
+            <Alert key={a.id} severity={a.severity} title={a.title}
+              timingLabel={formatAlertTimingLabel(a)}
               actionRequired={a.actionRequired}
               onOpen={() => onOpenStep && onOpenStep(a.id)} actionLabel="View steps">
               {a.body}
@@ -232,7 +239,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
       <section style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "var(--space-6)", alignItems: "start" }}>
         <Card title="Tasks" subtitle="Ordered by what unblocks the estate" padded={false}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {E.tasks.map((t, i) => (
+            {displayTasks.map((t, i) => (
               <li key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
                 <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
                 <Badge tone={taskTone[t.status]}>{taskLabel[t.status]}</Badge>
@@ -276,7 +283,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
 // Live dashboard built entirely from the agent's estate state. Shown for real
 // (non-demo) estates once at least one document has been parsed. Unlike the demo
 // view it never falls back to seed data, so it only ever shows this estate.
-function RealDashboard({ real }: { real: EstateState }) {
+function RealDashboard({ real, onOpenStep }: { real: EstateState; onOpenStep?: (id: string) => void }) {
   const I = ExecutorIcons;
   const fmt = fmtMoney;
   const phases = DEMO_ESTATE.phases;
@@ -323,7 +330,15 @@ function RealDashboard({ real }: { real: EstateState }) {
         <p style={{ margin: "0 0 var(--space-4)", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>Surfaced by the DeadlineAgent from your estate and California probate rules.</p>
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
           {openAlerts.map((a) => (
-            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining ?? undefined} actionRequired={a.actionRequired}>
+            <Alert
+              key={a.id}
+              severity={a.severity}
+              title={a.title}
+              timingLabel={formatAlertTimingLabel(a)}
+              actionRequired={a.actionRequired}
+              onOpen={() => onOpenStep && onOpenStep(a.id)}
+              actionLabel="View steps"
+            >
               {a.body}
             </Alert>
           ))}

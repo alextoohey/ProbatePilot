@@ -24,3 +24,19 @@ body {
   border-radius: 999px;
   border: 3px solid var(--bg-app);
 }
+
+@keyframes ec-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Indeterminate progress sweep used while drafting/loading. */
+@keyframes ec-progress-sweep {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}

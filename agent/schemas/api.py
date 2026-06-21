@@ -48,6 +48,11 @@ class DeadlineAgentRequest(ContractModel):
     estateId: str = "demo-milligan"
 
 
+class CompleteAlertRequest(ContractModel):
+    estateId: str = "demo-milligan"
+    alertId: str
+
+
 class ChatRequest(ContractModel):
     estateId: str = "demo-milligan"
     message: str
@@ -87,10 +92,21 @@ class ChatSessionResponse(ContractModel):
     messages: list[ChatMessage] = Field(default_factory=list)
 
 
+class ChatSuggestionsRequest(ContractModel):
+    estateId: str = "demo-milligan"
+
+
+class ChatSuggestionsResponse(ContractModel):
+    estateId: str
+    suggestions: list[str] = Field(default_factory=list)
+
+
 class GenerateLetterRequest(ContractModel):
     estateId: str = "demo-milligan"
     letterType: str = "creditor_notice"
     recipientName: str | None = None
+    # Free-text description for a custom letter (letterType == "custom").
+    instructions: str | None = None
 
 
 class EstateResponse(ContractModel):

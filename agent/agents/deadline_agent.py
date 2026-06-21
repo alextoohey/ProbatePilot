@@ -12,17 +12,15 @@ from typing import Any
 from llm.claude import REASONING_MODEL, create_reasoning_message
 from observability.arize import set_span_attribute, set_span_error, span
 from pydantic import ValidationError
-from rules.california_probate import CALIFORNIA_PROBATE_RULES, RULES_BY_ID, evaluate_rules
-from schemas.estate import Alert, EstateState
-from store.redis_client import get_estate_state, write_alerts
+from rules.california_probate import CALIFORNIA_PROBATE_RULES, RULES_BY_ID, alert_sort_key, derive_alert_timing_status, evaluate_rules
+from schemas.estate import Alert, EstateState, Task
+from store.redis_client import get_estate_state, set_estate_state
 
 
 LOGGER = logging.getLogger(__name__)
 REQUIRED_DEMO_ALERT_IDS = {"alert-creditor-notice", "alert-de-160-inventory"}
 MAX_TOOL_ROUNDS = 5
 DEADLINE_AGENT_MAX_TOKENS = 8192
-SEVERITY_RANK = {"critical": 0, "warning": 1, "info": 2}
-CONCRETE_TYPE_RANK = {"deadline": 0, "liability": 0, "rule_violation": 1, "missing_doc": 2}
 
 
 DEADLINE_AGENT_SYSTEM_PROMPT = """
@@ -30,6 +28,7 @@ You are Executor AI's DeadlineAgent for California probate.
 
 Use tools before finalizing. Identify operational deadline and liability risks, not legal advice.
 Rank alerts by severity, urgency, and executor liability. Preserve stable alert ids from tool outputs.
+Write in warm, direct executor-facing language. When helpful, include concise `whatYouNeed` and `steps`.
 
 Cross-rule consequences matter:
 - Missing appraisals can block DE-160 Inventory & Appraisal.
@@ -89,9 +88,8 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
                 raise MissingAnthropicKeyError("ANTHROPIC_API_KEY is not set.")
             claude_result = await _run_claude_tool_loop(estate, deterministic_alerts)
             claude_tool_calls = claude_result.tool_calls
-            _validated_claude_alerts_or_raise(claude_result.alerts, deterministic_alerts)
-            final_alerts = deterministic_alerts
-            set_span_attribute(current_span, "canonical_alert_source", "deterministic_rules")
+            final_alerts = _validated_claude_alerts_or_raise(claude_result.alerts, deterministic_alerts)
+            set_span_attribute(current_span, "canonical_alert_source", "deterministic_plus_claude_copy")
         except Exception as exc:
             fallback_used = True
             fallback_reason = _fallback_reason(exc)
@@ -101,13 +99,19 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
                 LOGGER.warning("DeadlineAgent using deterministic fallback: %s", fallback_reason, exc_info=True)
             final_alerts = deterministic_alerts
 
-        final_alerts = rank_alerts(dedupe_alerts(final_alerts))
+        final_alerts = [_ensure_alert_guidance(alert) for alert in rank_alerts(dedupe_alerts(final_alerts))]
+        final_alerts = _preserve_existing_alert_state(estate, final_alerts)
+        final_tasks = _sync_tasks(estate, final_alerts)
+        estate.alerts = final_alerts
+        estate.tasks = final_tasks
+        set_estate_state(estate)
         set_span_attribute(current_span, "rules_checked", len(CALIFORNIA_PROBATE_RULES))
         set_span_attribute(current_span, "alerts_fired", len(final_alerts))
+        set_span_attribute(current_span, "tasks_synced", len(final_tasks))
         set_span_attribute(current_span, "fallback_used", fallback_used)
         set_span_attribute(current_span, "fallback_reason", fallback_reason)
         set_span_attribute(current_span, "claude_tool_calls", claude_tool_calls)
-        return write_alerts(estate_id, final_alerts)
+        return final_alerts
 
 
 class MissingAnthropicKeyError(RuntimeError):
@@ -176,7 +180,8 @@ async def _run_claude_tool_loop(estate: EstateState, deterministic_alerts: list[
                 "content": (
                     "Return the top 5 alerts as JSON only. "
                     "Use the existing Alert schema exactly. "
-                    "Do not add new fields. Keep body concise."
+                    "Keep ids, severity, type, rule, daysRemaining, and timingStatus aligned with the tool output. "
+                    "You may improve title, body, actionRequired, whatYouNeed, and steps."
                 ),
             })
             final_json_nudge_sent = True
@@ -258,14 +263,14 @@ def estate_summary(estate: EstateState) -> dict[str, Any]:
 
 
 def rank_alerts(alerts: list[Alert]) -> list[Alert]:
-    return sorted(alerts, key=_alert_sort_key)
+    return sorted(alerts, key=alert_sort_key)
 
 
 def dedupe_alerts(alerts: list[Alert]) -> list[Alert]:
     by_id: dict[str, Alert] = {}
     for alert in alerts:
         existing = by_id.get(alert.id)
-        if existing is None or _alert_sort_key(alert) < _alert_sort_key(existing):
+        if existing is None or alert_sort_key(alert) < alert_sort_key(existing):
             by_id[alert.id] = alert
     return list(by_id.values())
 
@@ -280,7 +285,26 @@ def _validated_claude_alerts_or_raise(claude_alerts: list[Alert], deterministic_
     claude_ids = {alert.id for alert in alerts}
     if not required_ids_present.issubset(claude_ids):
         raise ValueError("Claude dropped required deterministic demo critical alerts.")
-    return alerts
+    claude_by_id = {alert.id: alert for alert in alerts}
+    return [_merge_alert_copy(alert, claude_by_id.get(alert.id)) for alert in deterministic_alerts]
+
+
+def mark_alert_complete(estate_id: str, alert_id: str) -> EstateState:
+    estate = get_estate_state(estate_id)
+    alert = next((item for item in estate.alerts if item.id == alert_id), None)
+    if alert is None:
+        raise KeyError(f"Alert not found: {alert_id}")
+
+    alert.dismissed = True
+
+    task = next((item for item in estate.tasks if item.relatedAlertId == alert_id), None)
+    if task is None:
+        task = _find_matching_task(estate.tasks, alert)
+    if task is not None:
+        task.status = "done"
+        task.relatedAlertId = alert_id
+
+    return set_estate_state(estate)
 
 
 def _parse_alerts_from_text(text: str) -> list[Alert]:
@@ -361,19 +385,165 @@ def _message_text(blocks: list[dict[str, Any]]) -> str:
     return "\n".join(str(block.get("text", "")) for block in blocks if block.get("type") == "text")
 
 
-def _alert_sort_key(alert: Alert) -> tuple[int, int, int, str]:
-    days_remaining = 999999 if alert.daysRemaining is None else alert.daysRemaining
-    return (
-        SEVERITY_RANK[alert.severity],
-        CONCRETE_TYPE_RANK[alert.type],
-        days_remaining,
-        alert.id,
-    )
-
-
 def _fallback_reason(exc: Exception) -> str:
     if isinstance(exc, MissingAnthropicKeyError):
         return "missing_anthropic_api_key"
     if isinstance(exc, ClaudeToolUseRequiredError):
         return "claude_returned_without_tool_use"
     return f"{exc.__class__.__name__}: {str(exc)[:160]}"
+
+
+def _merge_alert_copy(base: Alert, override: Alert | None) -> Alert:
+    if override is None:
+        return base
+    merged = base.model_copy(deep=True)
+    merged.title = override.title or base.title
+    merged.body = override.body or base.body
+    merged.actionRequired = override.actionRequired or base.actionRequired
+    merged.whatYouNeed = override.whatYouNeed or base.whatYouNeed
+    merged.steps = override.steps or base.steps
+    return merged
+
+
+def _preserve_existing_alert_state(estate: EstateState, alerts: list[Alert]) -> list[Alert]:
+    existing_by_id = {alert.id: alert for alert in estate.alerts}
+    preserved: list[Alert] = []
+    for alert in alerts:
+        existing = existing_by_id.get(alert.id)
+        if existing is None:
+            preserved.append(alert)
+            continue
+        merged = alert.model_copy(deep=True)
+        merged.createdAt = existing.createdAt or alert.createdAt
+        merged.dismissed = existing.dismissed
+        preserved.append(merged)
+    return preserved
+
+
+def _ensure_alert_guidance(alert: Alert) -> Alert:
+    enriched = alert.model_copy(deep=True)
+    if enriched.timingStatus == "no_deadline":
+        enriched.timingStatus = derive_alert_timing_status(enriched)
+    if not enriched.whatYouNeed:
+        enriched.whatYouNeed = _default_what_you_need(enriched)
+    if not enriched.steps:
+        enriched.steps = _default_steps(enriched)
+    return enriched
+
+
+def _default_what_you_need(alert: Alert) -> list[str]:
+    if alert.type == "liability":
+        return [
+            "The current status of the people, debts, or accounts named in this alert",
+            "Any notice, filing, or payment record that shows what has already been done",
+            "The date each action was completed so the estate record can be updated cleanly",
+        ]
+    if alert.type == "deadline":
+        return [
+            "The current status of the filing or deadline-driven task",
+            "Any supporting document that proves the step is complete",
+            "The date the filing, notice, or submission was completed",
+        ]
+    return [
+        "The current status of this task or filing",
+        "Any supporting document or proof that the step was completed",
+        "The date to record once the estate file has been updated",
+    ]
+
+
+def _default_steps(alert: Alert) -> list[str]:
+    first_step = f"Confirm the current status of {alert.title.lower()} and gather any document or note that shows what has already been done."
+    second_step = alert.actionRequired if alert.actionRequired.endswith(".") else f"{alert.actionRequired}."
+    third_step = "Update the estate record so this alert and its linked task clear on the next refresh."
+    return [first_step, second_step, third_step]
+
+
+def _sync_tasks(estate: EstateState, alerts: list[Alert]) -> list[Task]:
+    existing_by_alert = {task.relatedAlertId: task for task in estate.tasks if task.relatedAlertId}
+    unmatched_existing = [task for task in estate.tasks if not task.relatedAlertId]
+    matched_ids: set[str] = set()
+    tasks: list[Task] = []
+
+    for alert in alerts:
+        existing = existing_by_alert.get(alert.id) or _find_matching_task(unmatched_existing, alert)
+        matched_ids.add(existing.id if existing else f"task-{alert.id.removeprefix('alert-')}")
+        task = Task(
+            id=existing.id if existing else f"task-{alert.id.removeprefix('alert-')}",
+            title=_task_title_for_alert(alert),
+            status=existing.status if existing and existing.status in {"in_progress", "done"} else _task_status_for_alert(alert),
+            phase=existing.phase if existing else _task_phase_for_alert(alert, estate.phase),
+            dueDate=existing.dueDate if existing and existing.dueDate else None,
+            relatedAlertId=alert.id,
+        )
+        tasks.append(task)
+
+    for task in estate.tasks:
+        if task.id in matched_ids or task.relatedAlertId:
+            continue
+        tasks.append(task)
+
+    return sorted(tasks, key=_task_sort_key)
+
+
+def _task_title_for_alert(alert: Alert) -> str:
+    return alert.actionRequired[:-1] if alert.actionRequired.endswith(".") else alert.actionRequired
+
+
+def _task_status_for_alert(alert: Alert) -> str:
+    if "blocked" in alert.title.lower():
+        return "blocked"
+    if alert.id == "alert-claim-period-open":
+        return "blocked"
+    return "todo"
+
+
+def _task_phase_for_alert(alert: Alert, fallback_phase: int) -> int:
+    phase_by_prefix = {
+        "alert-de-140": 1,
+        "alert-death-certificates": 1,
+        "alert-estate-ein": 2,
+        "alert-de-160": 3,
+        "alert-creditor-notice": 4,
+        "alert-newspaper-notice": 4,
+        "alert-claim-period": 5,
+        "alert-final-1040": 6,
+        "alert-form-1041": 6,
+    }
+    for prefix, phase in phase_by_prefix.items():
+        if alert.id.startswith(prefix):
+            return phase
+    return fallback_phase
+
+
+def _task_sort_key(task: Task) -> tuple[int, int, str]:
+    status_rank = {"blocked": 0, "todo": 1, "in_progress": 2, "done": 3}
+    return (status_rank[task.status], task.phase, task.title)
+
+
+def _find_matching_task(tasks: list[Task], alert: Alert) -> Task | None:
+    for task in tasks:
+        if _task_matches_alert(task, alert):
+            return task
+    return None
+
+
+def _task_matches_alert(task: Task, alert: Alert) -> bool:
+    task_title = task.title.casefold()
+    alert_title = alert.title.casefold()
+    action = alert.actionRequired.casefold()
+
+    if "creditor" in task_title and ("creditor" in alert_title or "creditor" in action):
+        return True
+    if ("de-160" in task_title or "inventory" in task_title) and ("de-160" in alert_title or "inventory" in alert_title or "de-160" in action):
+        return True
+    if "death certificate" in task_title and "death certificate" in alert_title:
+        return True
+    if "probate petition" in task_title and ("probate petition" in alert_title or "de-140" in alert_title):
+        return True
+    if "ein" in task_title and "ein" in alert_title:
+        return True
+    if "1040" in task_title and "1040" in alert_title:
+        return True
+    if "1041" in task_title and "1041" in alert_title:
+        return True
+    return False

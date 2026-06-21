@@ -67,7 +67,10 @@ export const alertSchema = z.object({
   body: z.string(),
   rule: z.string(),
   daysRemaining: z.number().nullable().optional(),
+  timingStatus: z.enum(["dated", "blocking", "prerequisite", "missing_data", "no_deadline"]).optional(),
   actionRequired: z.string(),
+  whatYouNeed: z.array(z.string()),
+  steps: z.array(z.string()),
   createdAt: z.string(),
   dismissed: z.boolean(),
 }).strict();

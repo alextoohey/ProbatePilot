@@ -4,10 +4,10 @@
 // and real Deepgram voice (hold-to-speak STT + spoken replies for voice turns).
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
-import { Avatar, Button } from "@/components/ds";
+import { Avatar, Button, Spinner } from "@/components/ds";
 import { Markdown } from "@/components/Markdown";
 import type { EstateProfile } from "@/lib/design/data";
-import { createChatSession, getChatHistory, getChatSessions, getEstate, openChatStream } from "@/lib/agentClient";
+import { createChatSession, getChatHistory, getChatSessions, getChatSuggestions, getEstate, openChatStream } from "@/lib/agentClient";
 import type { ChatSession, EstateState } from "@/types";
 
 const I = ExecutorIcons;
@@ -33,7 +33,7 @@ function buildSuggestions(estate: EstateState): string[] {
   if (estate.beneficiaries?.length) out.push("Who inherits what under the will?");
   out.push("What should I do next?");
   const unique = Array.from(new Set(out));
-  return (unique.length ? unique : DEFAULT_SUGGESTIONS).slice(0, 4);
+  return (unique.length ? unique : DEFAULT_SUGGESTIONS).slice(0, 3);
 }
 
 function firstName(full: string): string {
@@ -116,14 +116,24 @@ function stripForSpeech(md: string): string {
   return spellOutInitialisms(ensureSentencePauses(stripped)).trim();
 }
 
+// Document types that carry no useful name — skip them in the greeting rather
+// than telling the executor we read an "unknown".
+const UNKNOWN_DOC_TYPES = new Set(["unknown", "unknown_document", "other", ""]);
+
 // Build the opening message from the real estate: who the executor is, who died,
-// and which documents have actually been parsed.
+// and which named documents have actually been parsed.
 function buildGreeting(deceasedName: string, executorName?: string | null, documentTypes: string[] = []): string {
   const hello = executorName ? `Hi ${firstName(executorName)}, ` : "Hi there, ";
   const tail = `Ask me anything about ${firstName(deceasedName)}'s estate, or I can tell you the most urgent thing to handle.`;
-  if (documentTypes.length === 0) return `${hello}${tail}`;
-  const docs = humanList(documentTypes.map((t) => t.replace(/_/g, " ")));
-  return `${hello}I've read ${docs}. ${tail}`;
+  const known = Array.from(
+    new Set(
+      documentTypes
+        .map((t) => (t || "").trim().toLowerCase())
+        .filter((t) => !UNKNOWN_DOC_TYPES.has(t)),
+    ),
+  ).map((t) => t.replace(/_/g, " "));
+  if (known.length === 0) return `${hello}${tail}`;
+  return `${hello}I've read the ${humanList(known)}. ${tail}`;
 }
 
 export function ChatScreen({ estate }: Props) {
@@ -139,6 +149,9 @@ export function ChatScreen({ estate }: Props) {
   // Hands-free voice-to-voice conversation mode (Deepgram STT + TTS in a loop).
   const [voiceMode, setVoiceMode] = React.useState(false);
   const [voiceStatus, setVoiceStatus] = React.useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  // Covers the brief flash of the placeholder greeting before the real estate
+  // and saved history load.
+  const [loading, setLoading] = React.useState(true);
   const endRef = React.useRef<HTMLDivElement>(null);
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
@@ -150,9 +163,10 @@ export function ChatScreen({ estate }: Props) {
   // history. If there's saved history, restore the conversation; otherwise show
   // a greeting built from this estate's executor, deceased, and parsed documents.
   React.useEffect(() => {
-    if (!estate.id) return;
+    if (!estate.id) { setLoading(false); setLoadingChats(false); return; }
     let cancelled = false;
     setLoadingChats(true);
+    setLoading(true);
     Promise.allSettled([getEstate(estate.id), getChatSessions(estate.id)]).then(async ([eRes, sRes]) => {
       if (cancelled) return;
       const estateData = eRes.status === "fulfilled" ? eRes.value : null;
@@ -173,6 +187,11 @@ export function ChatScreen({ estate }: Props) {
         setMsgs((m) => (m.length === 1 && m[0].from === "ai" ? [{ from: "ai", text: greeting }] : m));
       }
       setLoadingChats(false);
+    }).finally(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setLoadingChats(false);
+      }
     });
     return () => { cancelled = true; };
   }, [estate.id]);
@@ -209,7 +228,18 @@ export function ChatScreen({ estate }: Props) {
     if (endRef.current && endRef.current.parentNode) (endRef.current.parentNode as HTMLElement).scrollTop = endRef.current.offsetTop;
   }, [msgs]);
 
-  async function send(text?: string): Promise<string> {
+  // Pull fresh follow-up suggestions (grounded in the conversation so far). Called
+  // after each exchange so the chips reflect what was just discussed.
+  async function refreshSuggestions() {
+    try {
+      const next = await getChatSuggestions(estate.id);
+      if (next.length) setSuggestions(next.slice(0, 3));
+    } catch {
+      /* keep the existing suggestions if the refresh fails */
+    }
+  }
+
+  async function send(text?: string, viaVoice = false): Promise<string> {
     const t = (text ?? draft).trim();
     if (!t || busy) return "";
     setMsgs((m) => [...m, { from: "user", text: t }, { from: "ai", text: "" }]);
@@ -250,6 +280,10 @@ export function ChatScreen({ estate }: Props) {
         }
       }
       await refreshSessions(sessionId);
+      if (viaVoice && full.trim()) void speak(full);
+      // The exchange is now persisted server-side; regenerate the suggested
+      // next questions from the updated conversation.
+      void refreshSuggestions();
       return full;
     } catch {
       setMsgs((m) => {
@@ -480,6 +514,15 @@ export function ChatScreen({ estate }: Props) {
         <p style={{ margin: "10px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)", lineHeight: "var(--leading-relaxed)" }}>
           Add a will, deed, or statement to the estate of {estate.deceasedName} and I&apos;ll answer your questions grounded in those documents, never generic advice.
         </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "var(--text-muted)" }}>
+        <Spinner size={26} />
+        <p style={{ margin: 0, fontSize: "var(--text-sm)" }}>Opening your estate chat…</p>
       </div>
     );
   }
