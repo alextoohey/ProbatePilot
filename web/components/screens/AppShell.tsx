@@ -8,6 +8,7 @@ import {
   EXECUTOR_PROFILE,
   type EstateProfile,
   type ExecutorProfile,
+  type Alert as DesignAlert,
 } from "@/lib/design/data";
 import { getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
 import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
@@ -51,6 +52,9 @@ function toEstateProfile(estate: EstateState, user: PublicUser): EstateProfile {
     // The seeded demo estate drives the rich cosmetic screens; real estates
     // start empty until documents are parsed.
     seeded: estate.id === "demo-milligan",
+    // Chat and letters unlock once the estate actually has a document on file
+    // (the demo always does).
+    hasDocuments: estate.id === "demo-milligan" || estate.documents.length > 0,
   };
 }
 
@@ -66,20 +70,42 @@ export function AppShell() {
   const [showCreate, setShowCreate] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
   const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>({ all: true, deadlines: true, weekly: true, email: false });
-  const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[]>([]);
+  const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[] | null>(null);
   const [liveEstate, setLiveEstate] = React.useState<EstateState | null>(null);
+  const [liveAlertsFailed, setLiveAlertsFailed] = React.useState(false);
   const E = DEMO_ESTATE;
   const I = ExecutorIcons;
 
   React.useEffect(() => {
     const est = estates.find((e) => e.id === activeEstateId);
-    if (!est?.seeded) return;
-    Promise.all([runDeadlineAgent(activeEstateId), getEstate(activeEstateId)])
+    let cancelled = false;
+    setDetailId(null);
+    setLiveAlertsFailed(false);
+    setLiveEstate(null);
+    if (!est?.seeded) {
+      setLiveAlerts([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const controller = new AbortController();
+    setLiveAlerts(null);
+    Promise.all([runDeadlineAgent(activeEstateId, controller.signal), getEstate(activeEstateId, controller.signal)])
       .then(([alerts, estate]) => {
+        if (cancelled) return;
         setLiveAlerts(alerts);
         setLiveEstate(estate);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (cancelled) return;
+        setLiveAlerts([]);
+        setLiveAlertsFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [activeEstateId, estates]);
   const titles: Record<Route, string> = { dashboard: "Dashboard", documents: "Documents", chat: "Estate chat", letters: "Letters" };
 
@@ -139,6 +165,22 @@ export function AppShell() {
     setDetailId(null);
     setRoute("dashboard");
   }
+  // After a document is parsed, re-fetch the estate so chat/letters unlock
+  // (hasDocuments flips once the backend has a document on file).
+  async function refreshEstate(id: string) {
+    try {
+      const estate = await getEstate(id);
+      setEstates((cur) =>
+        cur.map((e) =>
+          e.id === id
+            ? { ...e, phase: estate.phase, hasDocuments: e.id === "demo-milligan" || estate.documents.length > 0 }
+            : e,
+        ),
+      );
+    } catch {
+      /* leave the current profile in place if the refresh fails */
+    }
+  }
   function createEstate(est: EstateProfile) {
     setEstates((c) => [...c, est]);
     setActiveEstateId(est.id);
@@ -147,9 +189,22 @@ export function AppShell() {
     setRoute("dashboard");
   }
 
-  const allAlerts = liveAlerts.length > 0
-    ? liveAlerts.map((a) => ({ ...a, steps: [] as string[], whatYouNeed: [] as string[], daysRemaining: a.daysRemaining ?? 0 }))
-    : [...E.alerts, ...(E.alertsNext || [])];
+  const guidanceAlerts = [...E.alerts, ...(E.alertsNext || [])];
+  const allAlerts: DesignAlert[] = liveAlerts === null
+    ? []
+    : liveAlerts.length > 0
+      ? liveAlerts.map((a) => {
+        const guidance = guidanceAlerts.find((g) => g.id === a.id);
+        return {
+          ...a,
+          steps: guidance?.steps || [],
+          whatYouNeed: guidance?.whatYouNeed || [],
+          daysRemaining: a.daysRemaining,
+        };
+      })
+      : active.seeded
+        ? []
+        : guidanceAlerts;
   const detailItem = active.seeded && detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
 
   let body: React.ReactNode;
@@ -168,7 +223,7 @@ export function AppShell() {
     crumb = titles[route];
     if (route === "dashboard")
       body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} liveAlerts={liveAlerts} liveEstate={liveEstate} />;
-    else if (route === "documents") body = <UploadScreen key={active.id} estate={active} />;
+    else if (route === "documents") body = <UploadScreen key={active.id} estate={active} onDocumentsChanged={() => refreshEstate(active.id)} />;
     else if (route === "chat") body = <ChatScreen key={active.id} estate={active} />;
     else if (route === "letters") body = <LettersScreen key={active.id} estate={active} />;
     else body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} />;

@@ -16,7 +16,7 @@ import {
 } from "@/lib/design/data";
 import type { Asset as EstateAsset } from "@/types/estate";
 
-type Props = { estate?: EstateProfile | null };
+type Props = { estate?: EstateProfile | null; onDocumentsChanged?: () => void };
 
 type Doc = { id: string; name: string; type: string; documentType: string; parsed: boolean };
 
@@ -112,8 +112,58 @@ function checklistIdForDocumentType(documentType: string): string | null {
   return CHECKLIST_ID_BY_DOC_TYPE[documentType] ?? null;
 }
 
+function parseProgressLabel(progress: number) {
+  if (progress >= 100) return "Document parsed";
+  if (progress >= 78) return "Updating the estate graph";
+  if (progress >= 48) return "Extracting assets, debts, and people";
+  if (progress >= 20) return "Reading pages and classifying the document";
+  return "Uploading securely";
+}
+
+function ParseProgress({
+  fileName,
+  progress,
+}: {
+  fileName: string | null;
+  progress: number;
+}) {
+  const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+  return (
+    <div style={{ maxWidth: 460, margin: "18px auto 0", textAlign: "left" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14, marginBottom: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {fileName || "Document"}
+          </p>
+          <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{parseProgressLabel(clamped)}</p>
+        </div>
+        <span style={{ flex: "none", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)" }}>{clamped}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Document parsing progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={clamped}
+        style={{ height: 8, borderRadius: "var(--radius-full)", background: "var(--surface-sunken)", overflow: "hidden", boxShadow: "inset 0 0 0 1px rgba(203,213,225,0.7)" }}
+      >
+        <span
+          style={{
+            display: "block",
+            width: `${clamped}%`,
+            height: "100%",
+            borderRadius: "inherit",
+            background: "linear-gradient(90deg, var(--evergreen-500), var(--evergreen-700))",
+            transition: "width 420ms cubic-bezier(0.2, 0, 0, 1)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Documents, drop zone + the live estate graph built from parsed documents.
-export function UploadScreen({ estate }: Props) {
+export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   const I = ExecutorIcons;
   const E = DEMO_ESTATE;
   const fmt = fmtMoney;
@@ -124,12 +174,15 @@ export function UploadScreen({ estate }: Props) {
   const [docs, setDocs] = React.useState<Doc[]>([]);
   const [drag, setDrag] = React.useState(false);
   const [parsing, setParsing] = React.useState(false);
+  const [parseProgress, setParseProgress] = React.useState(0);
+  const [parsingFileName, setParsingFileName] = React.useState<string | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   // Set when auto-detection fails: holds the file awaiting a manual type choice.
   const [pendingFile, setPendingFile] = React.useState<File | null>(null);
   const [pendingType, setPendingType] = React.useState<string>(DOC_TYPE_OPTIONS[0].value);
   const [assets, setAssets] = React.useState<Asset[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const parseDoneTimer = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -154,6 +207,26 @@ export function UploadScreen({ estate }: Props) {
     const map = blobUrlMap.current;
     return () => { map.forEach((url) => URL.revokeObjectURL(url)); };
   }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (parseDoneTimer.current !== null) window.clearTimeout(parseDoneTimer.current);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!parsing) return;
+    const timer = window.setInterval(() => {
+      setParseProgress((current) => {
+        if (current < 18) return current + 5;
+        if (current < 48) return current + 4;
+        if (current < 78) return current + 2.5;
+        if (current < 94) return current + 0.8;
+        return current;
+      });
+    }, 420);
+    return () => window.clearInterval(timer);
+  }, [parsing]);
 
   // Persistent URL for the original file, served by the agent from Redis. The
   // seeded demo's documents have no stored bytes, so they fall back to a sample.
@@ -208,7 +281,14 @@ export function UploadScreen({ estate }: Props) {
 
   async function uploadFile(file: File, documentType?: string) {
     setUploadError(null);
+    if (parseDoneTimer.current !== null) {
+      window.clearTimeout(parseDoneTimer.current);
+      parseDoneTimer.current = null;
+    }
+    setParsingFileName(file.name);
+    setParseProgress(6);
     setParsing(true);
+    let parsed = false;
     try {
       const result = await parseDocument(file, estateId, documentType);
       // Auto-detection failed and we have no manual choice yet — prompt for the type.
@@ -225,11 +305,25 @@ export function UploadScreen({ estate }: Props) {
       if (newDoc) {
         blobUrlMap.current.set(newDoc.id, URL.createObjectURL(file));
       }
+      parsed = true;
+      setParseProgress(100);
+      // Let the shell re-evaluate this estate so chat/letters unlock.
+      onDocumentsChanged?.();
     } catch (error) {
       console.error(error);
       setUploadError(error instanceof Error ? error.message : "Couldn't read that document. Please try again.");
-    } finally {
       setParsing(false);
+      setParsingFileName(null);
+      setParseProgress(0);
+    } finally {
+      if (parsed) {
+        parseDoneTimer.current = window.setTimeout(() => {
+          setParsing(false);
+          setParsingFileName(null);
+          setParseProgress(0);
+          parseDoneTimer.current = null;
+        }, 650);
+      }
       if (inputRef.current) inputRef.current.value = "";
     }
   }
@@ -299,6 +393,7 @@ export function UploadScreen({ estate }: Props) {
           {parsing ? "Reading the document…" : "Drop a document, or click to upload"}
         </div>
         <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or text. Saved after parsing succeeds</div>
+        {parsing ? <ParseProgress fileName={parsingFileName} progress={parseProgress} /> : null}
         {uploadError ? (
           <div style={{ fontSize: "var(--text-sm)", color: "var(--critical-text)", marginTop: 10 }}>{uploadError}</div>
         ) : null}

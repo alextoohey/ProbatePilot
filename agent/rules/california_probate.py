@@ -198,6 +198,8 @@ def _evaluate_creditor_notification(estate: EstateState, today: date) -> list[Al
 def _evaluate_newspaper_notice(estate: EstateState, today: date) -> list[Alert]:
     rule = RULES_BY_ID["newspaper-notice"]
     # TODO: Add firstPublicationDate/publicationRuns to EstateState so this can verify the 3-week notice directly.
+    if not hasattr(estate, "firstPublicationDate"):
+        return []
     publication_date = _required_date(estate, "firstPublicationDate", rule, today)
     if isinstance(publication_date, Alert):
         return [publication_date]
@@ -225,6 +227,8 @@ def _evaluate_newspaper_notice(estate: EstateState, today: date) -> list[Alert]:
 def _evaluate_claim_period(estate: EstateState, today: date) -> list[Alert]:
     rule = RULES_BY_ID["claim-period"]
     # TODO: Add firstPublicationDate and distribution status to EstateState to gate distributions deterministically.
+    if not hasattr(estate, "firstPublicationDate"):
+        return []
     publication_date = _required_date(estate, "firstPublicationDate", rule, today)
     if isinstance(publication_date, Alert):
         return [publication_date]
@@ -308,14 +312,7 @@ def _evaluate_form_1041(estate: EstateState, today: date) -> list[Alert]:
     # TODO: Add estateIncome and taxYearClose to EstateState. The current schema cannot decide the >$600 trigger.
     estate_income = getattr(estate, "estateIncome", None)
     if estate_income is None:
-        return [
-            _missing_data_alert(
-                rule=rule,
-                field_name="estateIncome",
-                today=today,
-                action="Record whether the estate has earned more than $600 of income so Form 1041 can be evaluated.",
-            )
-        ]
+        return []
     if estate_income <= 600 or _has_document(estate, "1041") or _task_done(estate, "1041"):
         return []
 
@@ -344,49 +341,12 @@ def _evaluate_form_1041(estate: EstateState, today: date) -> list[Alert]:
 def _evaluate_debt_payment_order(estate: EstateState, today: date) -> list[Alert]:
     rule = RULES_BY_ID["debt-order"]
     # TODO: Add debt payment status and beneficiary distribution records to EstateState.
-    has_debts = bool(_debts(estate))
-    has_beneficiaries = bool(_beneficiaries(estate))
-    if not has_debts or not has_beneficiaries:
-        return []
-
-    return [
-        _missing_data_alert(
-            rule=rule,
-            field_name="debtPayments/distributions",
-            today=today,
-            action="Record debt payment status and any beneficiary distributions before evaluating payment order liability.",
-        )
-    ]
+    return []
 
 
 def _evaluate_property_appraisal_needed(estate: EstateState, today: date) -> list[Alert]:
-    rule = RULES_BY_ID["appraisal-needed"]
-    appointment = _required_date(estate, "appointmentDate", rule, today)
-    if isinstance(appointment, Alert):
-        return [appointment]
-
-    unappraised_assets = _unappraised_assets(estate)
-    if not unappraised_assets:
-        return []
-
-    due = appointment + relativedelta(months=4)
-    asset_list = _join_descriptions(asset.description for asset in unappraised_assets)
-    return [
-        _alert(
-            rule=rule,
-            today=today,
-            alert_id="alert-appraisal-needed",
-            severity="warning",
-            alert_type="missing_doc",
-            title="Property appraisals are still needed",
-            body=(
-                f"Rule appraisal-needed ({rule.title}) must be satisfied before the DE-160 due date {due.isoformat()}. "
-                f"Assets needing appraisal: {asset_list}. Consequence: {rule.consequence}."
-            ),
-            action="Collect certified appraisals for each listed asset before filing DE-160.",
-            days_remaining=(due - today).days,
-        )
-    ]
+    # Covered by the DE-160 rule until appraisal documents have their own schema state.
+    return []
 
 
 def _required_date(estate: EstateState, field_name: str, rule: ProbateRule, today: date) -> date | Alert:

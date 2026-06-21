@@ -83,18 +83,19 @@ export async function seedEstate(): Promise<{ estate: EstateState; alerts: Alert
   return seedResponseSchema.parse(payload);
 }
 
-export async function getEstate(estateId = DEFAULT_ESTATE_ID): Promise<EstateState> {
-  const response = await fetch(`/api/agent/estate/${estateId}`);
+export async function getEstate(estateId = DEFAULT_ESTATE_ID, signal?: AbortSignal): Promise<EstateState> {
+  const response = await fetch(`/api/agent/estate/${estateId}`, { signal });
   const payload = await response.json();
   return estateResponseSchema.parse(payload).estate;
 }
 
-export async function runDeadlineAgent(estateId = DEFAULT_ESTATE_ID): Promise<Alert[]> {
+export async function runDeadlineAgent(estateId = DEFAULT_ESTATE_ID, signal?: AbortSignal): Promise<Alert[]> {
   const request = deadlineAgentRequestSchema.parse({ estateId });
   const response = await fetch("/api/agent/deadline-agent", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(request),
+    signal,
   });
   const payload = await response.json();
   return deadlineAgentResponseSchema.parse(payload).alerts;
@@ -136,8 +137,9 @@ export async function openChatStream(request: ChatRequest): Promise<ReadableStre
 export async function generateLetter(
   letterType: string,
   estateId = DEFAULT_ESTATE_ID,
+  recipientName?: string | null,
 ): Promise<GenerateLetterResponse> {
-  const request = generateLetterRequestSchema.parse({ estateId, letterType });
+  const request = generateLetterRequestSchema.parse({ estateId, letterType, recipientName });
   const response = await fetch("/api/agent/generate-letter", {
     method: "POST",
     headers: { "content-type": "application/json" },

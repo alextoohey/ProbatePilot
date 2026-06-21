@@ -161,7 +161,7 @@ export function AuthLanding({
     <div style={{ minHeight: "100vh", background: "var(--bg-app)", fontFamily: "var(--font-sans)", color: "var(--text-body)" }}>
       {screen === "landing" && (
         <div>
-          <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(227,239,231,0.42)", backdropFilter: "blur(18px) saturate(1.2)", WebkitBackdropFilter: "blur(18px) saturate(1.2)", borderBottom: "1px solid rgba(195,221,205,0.34)" }}>
+          <header style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 10, background: "rgba(227,239,231,0.28)", backdropFilter: "blur(18px) saturate(1.2)", WebkitBackdropFilter: "blur(18px) saturate(1.2)", borderBottom: "1px solid rgba(195,221,205,0.28)" }}>
             <div style={{ maxWidth: "var(--container-lg)", margin: "0 auto", padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
               <LogoButton onClick={() => go("landing")} />
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -173,7 +173,7 @@ export function AuthLanding({
 
           <section
             style={{
-              minHeight: "calc(100vh - 156px)",
+              minHeight: "100vh",
               display: "flex",
               alignItems: "center",
               backgroundColor: "var(--ink-950)",
@@ -183,7 +183,7 @@ export function AuthLanding({
               borderBottom: "1px solid rgba(17,24,28,0.12)",
             }}
           >
-            <div style={{ width: "100%", maxWidth: "var(--container-lg)", margin: "0 auto", padding: "76px 32px 68px" }}>
+            <div style={{ width: "100%", maxWidth: "var(--container-lg)", margin: "0 auto", padding: "132px 32px 68px" }}>
               <div style={{ maxWidth: 690 }}>
                 <p style={{ margin: "0 0 18px", fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "rgba(241,247,243,0.84)" }}>The expert in your corner</p>
                 <h1 style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: "var(--text-5xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", lineHeight: "var(--leading-tight)", color: "var(--paper-50)", textWrap: "balance", textShadow: "0 2px 24px rgba(0,0,0,0.28)" }}>You shouldn&apos;t have to learn probate law while you&apos;re grieving.</h1>

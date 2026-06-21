@@ -6,7 +6,7 @@ import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Avatar, Button } from "@/components/ds";
 import type { EstateProfile } from "@/lib/design/data";
-import { openChatStream } from "@/lib/agentClient";
+import { getEstate, openChatStream } from "@/lib/agentClient";
 
 const I = ExecutorIcons;
 
@@ -14,20 +14,56 @@ type Props = { estate: EstateProfile };
 
 type Msg = { from: "ai" | "user"; text: string };
 
-const SEED: Msg[] = [
-  { from: "ai", text: "Hi Dana, I've read the will, the Wells Fargo statement, and the deed for 1847 Marin Ave. Ask me anything about Robert's estate, or I can tell you the most urgent thing to handle." },
-];
 const SUGGESTIONS = ["What's the most urgent deadline?", "How much does the estate owe?", "Explain a DE-160 in plain English"];
+
+function firstName(full: string): string {
+  return full.trim().split(/\s+/)[0] || full.trim();
+}
+
+function humanList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+// Build the opening message from the real estate: who the executor is, who died,
+// and which documents have actually been parsed.
+function buildGreeting(deceasedName: string, executorName?: string | null, documentTypes: string[] = []): string {
+  const hello = executorName ? `Hi ${firstName(executorName)}, ` : "Hi there, ";
+  const tail = `Ask me anything about ${firstName(deceasedName)}'s estate, or I can tell you the most urgent thing to handle.`;
+  if (documentTypes.length === 0) return `${hello}${tail}`;
+  const docs = humanList(documentTypes.map((t) => t.replace(/_/g, " ")));
+  return `${hello}I've read ${docs}. ${tail}`;
+}
 
 export function ChatScreen({ estate }: Props) {
   const suggestions = SUGGESTIONS;
-  const [msgs, setMsgs] = React.useState<Msg[]>(SEED);
+  const [msgs, setMsgs] = React.useState<Msg[]>(() => [{ from: "ai", text: buildGreeting(estate.deceasedName) }]);
+  const [subtitle, setSubtitle] = React.useState(`Grounded in ${firstName(estate.deceasedName)}'s documents, not legal advice`);
   const [draft, setDraft] = React.useState("");
   const [recording, setRecording] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const endRef = React.useRef<HTMLDivElement>(null);
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
+
+  // Enrich the greeting once the real estate loads — but only if the executor
+  // hasn't started the conversation yet.
+  React.useEffect(() => {
+    if (!estate.id) return;
+    let cancelled = false;
+    getEstate(estate.id)
+      .then((e) => {
+        if (cancelled) return;
+        setSubtitle(`Grounded in ${firstName(e.deceasedName)}'s documents, not legal advice`);
+        const greeting = buildGreeting(e.deceasedName, e.executor?.name, e.documents.map((d) => d.documentType));
+        setMsgs((m) => (m.length === 1 && m[0].from === "ai" ? [{ from: "ai", text: greeting }] : m));
+      })
+      .catch(() => {
+        /* keep the name-only greeting if the estate can't be fetched */
+      });
+    return () => { cancelled = true; };
+  }, [estate.id]);
 
   React.useEffect(() => {
     if (endRef.current && endRef.current.parentNode) (endRef.current.parentNode as HTMLElement).scrollTop = endRef.current.offsetTop;
@@ -125,7 +161,7 @@ export function ChatScreen({ estate }: Props) {
     }
   }
 
-  if (estate && !estate.seeded) {
+  if (estate && !estate.hasDocuments) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "80px 40px", textAlign: "center" }}>
         <span style={{ display: "inline-flex", width: 52, height: 52, borderRadius: "999px", background: "var(--evergreen-100)", color: "var(--evergreen-700)", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
@@ -143,7 +179,7 @@ export function ChatScreen({ estate }: Props) {
     <div style={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 760, margin: "0 auto", width: "100%" }}>
       <header style={{ padding: "24px 28px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "var(--text-xl)", fontWeight: 600, color: "var(--text-strong)" }}>Estate chat</h1>
-        <p style={{ margin: "4px 0 0", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>Grounded in Robert&apos;s documents, not legal advice</p>
+        <p style={{ margin: "4px 0 0", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{subtitle}</p>
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>

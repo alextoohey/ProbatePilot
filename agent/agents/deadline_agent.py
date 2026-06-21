@@ -89,7 +89,9 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
                 raise MissingAnthropicKeyError("ANTHROPIC_API_KEY is not set.")
             claude_result = await _run_claude_tool_loop(estate, deterministic_alerts)
             claude_tool_calls = claude_result.tool_calls
-            final_alerts = _validated_claude_alerts_or_raise(claude_result.alerts, deterministic_alerts)
+            _validated_claude_alerts_or_raise(claude_result.alerts, deterministic_alerts)
+            final_alerts = deterministic_alerts
+            set_span_attribute(current_span, "canonical_alert_source", "deterministic_rules")
         except Exception as exc:
             fallback_used = True
             fallback_reason = _fallback_reason(exc)
