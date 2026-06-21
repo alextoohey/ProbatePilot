@@ -4,8 +4,8 @@ import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, StatBlock, Alert, Badge, ProgressSteps, Button, Avatar } from "@/components/ds";
 import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary, type Alert as DesignAlert } from "@/lib/design/data";
-import { getEstate } from "@/lib/agentClient";
 import { formatAlertTimingLabel } from "@/lib/alertTiming";
+import { cleanDashboardText } from "@/lib/displayText";
 import { BeneficiaryModal } from "./BeneficiaryModal";
 import type { Alert as BackendAlert, EstateState } from "@/types";
 
@@ -27,53 +27,38 @@ type Props = {
 
 export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments, liveAlerts = null, liveEstate, liveAlertsFailed = false }: Props) {
   const E = DEMO_ESTATE;
-  const fmt = fmtMoney;
   const I = ExecutorIcons;
   const [benList, setBenList] = React.useState<Beneficiary[]>(E.beneficiaries.map((b) => ({ ...b })));
   const [openBenId, setOpenBenId] = React.useState<string | null>(null);
 
-  // Real (non-demo) estates load their live state from the agent.
+  // AppShell owns the active estate request. Reading the same estate again in
+  // this component created two snapshots, which could render an alert that the
+  // step-detail view could not find.
   const isReal = !!estate && !estate.seeded;
   const currentReal = liveEstate && estate && liveEstate.id === estate.id ? liveEstate : null;
-  const [real, setReal] = React.useState<EstateState | null>(null);
-  const [loadingReal, setLoadingReal] = React.useState(isReal && !currentReal);
-
-  React.useEffect(() => {
-    if (!isReal || !estate || currentReal) {
-      setLoadingReal(false);
-      return;
-    }
-    let cancelled = false;
-    setLoadingReal(true);
-    getEstate(estate.id)
-      .then((e) => { if (!cancelled) setReal(e); })
-      .catch(() => { if (!cancelled) setReal(null); })
-      .finally(() => { if (!cancelled) setLoadingReal(false); });
-    return () => { cancelled = true; };
-  }, [isReal, estate, currentReal]);
 
   // A newly created estate has no documents yet, show onboarding; once any
   // document is parsed, show the live estate built from real data.
   if (isReal && estate) {
-    if (loadingReal) {
+    if (!currentReal) {
       return (
         <div style={{ display: "flex", height: "100%", minHeight: 320, alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)" }}>
           Loading the estate…
         </div>
       );
     }
-    if ((currentReal || real) && (currentReal || real)!.documents.length > 0) {
-      return <RealDashboard real={currentReal || real!} onOpenStep={onOpenStep} />;
+    if (currentReal.documents.length > 0) {
+      return <RealDashboard real={currentReal} alerts={liveAlerts ?? currentReal.alerts} onOpenStep={onOpenStep} />;
     }
     return (
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "48px 40px", display: "grid", gap: "var(--space-8)" }}>
         <header>
           <p style={{ margin: 0, fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "var(--text-muted)" }}>New estate</p>
           <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", color: "var(--text-strong)" }}>
-            Let's set up the estate of {estate.deceasedName}
+            Let's set up the estate of {cleanDashboardText(estate.deceasedName)}
           </h1>
           <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
-            You're the {estate.role.toLowerCase()} for this {estate.state} estate in {estate.county} County. Add a few documents and Executor AI will build the estate and start tracking deadlines for you.
+            You're the {cleanDashboardText(estate.role.toLowerCase())} for this {cleanDashboardText(estate.state)} estate in {cleanDashboardText(estate.county)} County. Add a few documents and Executor AI will build the estate and start tracking deadlines for you.
           </p>
         </header>
         <Card padded>
@@ -118,50 +103,42 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
         : guidanceAlerts;
   const open = allAlerts.filter((a) => !done.has(a.id) && !(a as BackendAlert).dismissed);
   const completed = allAlerts.filter((a) => done.has(a.id) || !!(a as BackendAlert).dismissed);
-  const justAdvanced = false;
-
   const assetTotal = liveEstate
-    ? liveEstate.assets.reduce((s, a) => s + (a.estimatedValue ?? 0), 0)
-    : E.assets.reduce((s, a) => s + a.value, 0);
+    ? liveEstate.assets.reduce((sum, asset) => sum + (asset.estimatedValue ?? 0), 0)
+    : E.assets.reduce((sum, asset) => sum + asset.value, 0);
   const debtTotal = liveEstate
-    ? liveEstate.debts.reduce((s, d) => s + d.amount, 0)
-    : E.debts.reduce((s, d) => s + d.amount, 0);
-
+    ? liveEstate.debts.reduce((sum, debt) => sum + debt.amount, 0)
+    : E.debts.reduce((sum, debt) => sum + debt.amount, 0);
   const taskTone = { done: "success", todo: "neutral", in_progress: "brand", blocked: "warning" } as const;
   const taskLabel = { done: "Done", todo: "To do", in_progress: "In progress", blocked: "Blocked" } as const;
   const displayTasks = liveEstate?.tasks?.length ? liveEstate.tasks : E.tasks;
 
-  const allDone = open.length === 0;
-  const currentPhase = liveEstate ? liveEstate.phase : E.phase;
-  const currentIndex = Math.min(currentPhase - 1, E.phases.length - 1);
-  const phaseNum = currentIndex + 1;
-  const phaseName = E.phases[currentIndex];
   const deceasedName = liveEstate ? liveEstate.deceasedName : E.deceasedName;
   const appointmentDate = liveEstate ? liveEstate.appointmentDate : E.appointmentDate;
   const beneficiaryCount = liveEstate ? liveEstate.beneficiaries.length : E.beneficiaries.length;
   const assetCount = liveEstate ? liveEstate.assets.length : E.assets.length;
-  const appraisedCount = liveEstate
-    ? liveEstate.assets.filter((a) => a.appraised).length
-    : E.assets.filter((a) => a.appraised).length;
+  const appraisedCount = liveEstate ? liveEstate.assets.filter((asset) => asset.appraised).length : E.assets.filter((asset) => asset.appraised).length;
+  const currentPhase = liveEstate ? liveEstate.phase : E.phase;
+  const currentIndex = Math.min(Math.max(currentPhase - 1, 0), E.phases.length - 1);
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px 40px", display: "grid", gap: "var(--space-8)" }}>
       <header>
         <p style={{ margin: 0, fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "var(--text-muted)" }}>Executor dashboard</p>
         <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", color: "var(--text-strong)" }}>
-          The estate of {deceasedName}
+          The estate of {cleanDashboardText(deceasedName)}
         </h1>
         <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
           Letters testamentary issued {appointmentDate}. Here's where things stand, and the next thing to handle.
         </p>
       </header>
 
-      <Card padded={true}>
+      <Card padded>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-6)", marginBottom: "var(--space-6)" }}>
-          <StatBlock label="Assets" value={fmt(assetTotal)} sub={`${assetCount} items, ${appraisedCount} appraised`} />
-          <StatBlock label="Debts" value={fmt(debtTotal)} tone="critical" sub={`${liveEstate ? liveEstate.debts.length : E.debts.length} creditors`} />
-          <StatBlock label="Beneficiaries" value={String(beneficiaryCount)} sub={liveEstate ? liveEstate.beneficiaries.map((b) => b.name.split(" ")[0]).join(", ") : "Dana, Sarah, Marcus"} />
-          <StatBlock label="Phase" value={`${phaseNum} of 6`} tone={allDone ? "success" : "brand"} sub={phaseName} />
+          <StatBlock label="Assets" value={fmtMoney(assetTotal)} sub={`${assetCount} items, ${appraisedCount} appraised`} />
+          <StatBlock label="Debts" value={fmtMoney(debtTotal)} tone="critical" sub={`${liveEstate ? liveEstate.debts.length : E.debts.length} creditors`} />
+          <StatBlock label="Beneficiaries" value={String(beneficiaryCount)} sub={liveEstate ? liveEstate.beneficiaries.map((beneficiary) => cleanDashboardText(beneficiary.name.split(" ")[0])).join(", ") : "Dana, Sarah, Marcus"} />
+          <StatBlock label="Phase" value={`${currentIndex + 1} of 6`} tone={open.length === 0 ? "success" : "brand"} sub={cleanDashboardText(E.phases[currentIndex])} />
         </div>
         <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-6)" }}>
           <ProgressSteps current={currentIndex} steps={E.phases} />
@@ -177,12 +154,6 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
         <p style={{ margin: "0 0 var(--space-4)", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
           Open any item for step-by-step instructions. Nothing is dismissed by accident, you mark a step complete when it's truly done.
         </p>
-        {justAdvanced ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "var(--space-4)", padding: "var(--space-3) var(--space-4)", background: "var(--success-bg)", border: "1px solid var(--success-border)", borderRadius: "var(--radius-md)", color: "var(--success-text)" }}>
-            <I.CheckCircle size={18} color="var(--success-accent)" />
-            <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Nice work. You've advanced to the {phaseName} phase, here's what's next.</span>
-          </div>
-        ) : null}
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
           {liveAlertsLoading ? (
             <Card tint padded>
@@ -201,11 +172,11 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
             </Card>
           ) : null}
           {!liveAlertsLoading && !liveAlertsFailed && open.map((a) => (
-            <Alert key={a.id} severity={a.severity} title={a.title}
+            <Alert key={a.id} severity={a.severity} title={cleanDashboardText(a.title)}
               timingLabel={formatAlertTimingLabel(a)}
-              actionRequired={a.actionRequired}
+              actionRequired={cleanDashboardText(a.actionRequired)}
               onOpen={() => onOpenStep && onOpenStep(a.id)} actionLabel="View steps">
-              {a.body}
+              {cleanDashboardText(a.body)}
             </Alert>
           ))}
           {!liveAlertsLoading && !liveAlertsFailed && open.length === 0 ? (
@@ -227,7 +198,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
                   <button onClick={() => onOpenStep && onOpenStep(a.id)}
                     style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: "var(--surface-card)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", cursor: "pointer", color: "var(--text-muted)", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)" }}>
                     <I.CheckCircle size={17} color="var(--success-accent)" />
-                    <span style={{ textDecoration: "line-through" }}>{a.title}</span>
+                    <span style={{ textDecoration: "line-through" }}>{cleanDashboardText(a.title)}</span>
                   </button>
                 </li>
               ))}
@@ -241,7 +212,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {displayTasks.map((t, i) => (
               <li key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
-                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
+                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{cleanDashboardText(t.title)}</span>
                 <Badge tone={taskTone[t.status]}>{taskLabel[t.status]}</Badge>
               </li>
             ))}
@@ -258,10 +229,10 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                   <Avatar name={b.name} size="sm" />
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{b.name}</span>
-                    <span style={{ display: "block", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{b.relationship}</span>
+                    <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{cleanDashboardText(b.name)}</span>
+                    <span style={{ display: "block", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{cleanDashboardText(b.relationship)}</span>
                   </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{b.share}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{cleanDashboardText(b.share)}</span>
                   <I.ChevronRight size={16} color="var(--text-subtle)" />
                 </button>
               </li>
@@ -283,20 +254,14 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
 // Live dashboard built entirely from the agent's estate state. Shown for real
 // (non-demo) estates once at least one document has been parsed. Unlike the demo
 // view it never falls back to seed data, so it only ever shows this estate.
-function RealDashboard({ real, onOpenStep }: { real: EstateState; onOpenStep?: (id: string) => void }) {
+function RealDashboard({ real, alerts, onOpenStep }: { real: EstateState; alerts: BackendAlert[]; onOpenStep?: (id: string) => void }) {
   const I = ExecutorIcons;
-  const fmt = fmtMoney;
-  const phases = DEMO_ESTATE.phases;
-
-  const assetTotal = real.assets.reduce((s, a) => s + (a.estimatedValue ?? a.appraisedValue ?? 0), 0);
-  const appraisedCount = real.assets.filter((a) => a.appraised).length;
-  const debtTotal = real.debts.reduce((s, d) => s + d.amount, 0);
-  const notifiedCreditors = real.debts.filter((d) => d.notified).length;
-  const netPosition = assetTotal - debtTotal;
-
-  const phaseNum = Math.min(Math.max(real.phase, 1), phases.length);
-  const phaseName = phases[phaseNum - 1] ?? "In progress";
-  const openAlerts = real.alerts.filter((a) => !a.dismissed);
+  const openAlerts = alerts.filter((a) => !a.dismissed);
+  const assetTotal = real.assets.reduce((sum, asset) => sum + (asset.estimatedValue ?? asset.appraisedValue ?? 0), 0);
+  const appraisedCount = real.assets.filter((asset) => asset.appraised).length;
+  const debtTotal = real.debts.reduce((sum, debt) => sum + debt.amount, 0);
+  const notifiedCreditors = real.debts.filter((debt) => debt.notified).length;
+  const currentIndex = Math.min(Math.max(real.phase - 1, 0), DEMO_ESTATE.phases.length - 1);
 
   const taskTone = { done: "success", todo: "neutral", in_progress: "brand", blocked: "warning" } as const;
   const taskLabel = { done: "Done", todo: "To do", in_progress: "In progress", blocked: "Blocked" } as const;
@@ -306,22 +271,22 @@ function RealDashboard({ real, onOpenStep }: { real: EstateState; onOpenStep?: (
       <header>
         <p style={{ margin: 0, fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "var(--text-muted)" }}>Executor dashboard</p>
         <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", color: "var(--text-strong)" }}>
-          The estate of {real.deceasedName}
+          The estate of {cleanDashboardText(real.deceasedName)}
         </h1>
         <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
           Letters testamentary issued {formatLongDate(real.appointmentDate)}. Built from your documents as you add them.
         </p>
       </header>
 
-      <Card padded={true}>
+      <Card padded>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-6)", marginBottom: "var(--space-6)" }}>
-          <StatBlock label="Assets" value={fmt(assetTotal)} sub={`${real.assets.length} items, ${appraisedCount} appraised`} />
-          <StatBlock label="Debts" value={fmt(debtTotal)} tone="critical" sub={`${real.debts.length} creditors, ${notifiedCreditors} notified`} />
-          <StatBlock label="Beneficiaries" value={String(real.beneficiaries.length)} sub={real.beneficiaries.map((b) => b.name.split(" ")[0]).join(", ") || "None yet"} />
-          <StatBlock label="Phase" value={`${phaseNum} of 6`} tone="brand" sub={phaseName} />
+          <StatBlock label="Assets" value={fmtMoney(assetTotal)} sub={`${real.assets.length} items, ${appraisedCount} appraised`} />
+          <StatBlock label="Debts" value={fmtMoney(debtTotal)} tone="critical" sub={`${real.debts.length} creditors, ${notifiedCreditors} notified`} />
+          <StatBlock label="Beneficiaries" value={String(real.beneficiaries.length)} sub={real.beneficiaries.map((beneficiary) => cleanDashboardText(beneficiary.name.split(" ")[0])).join(", ") || "None yet"} />
+          <StatBlock label="Phase" value={`${currentIndex + 1} of 6`} tone="brand" sub={cleanDashboardText(DEMO_ESTATE.phases[currentIndex])} />
         </div>
         <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-6)" }}>
-          <ProgressSteps current={phaseNum - 1} steps={phases} />
+          <ProgressSteps current={currentIndex} steps={DEMO_ESTATE.phases} />
         </div>
       </Card>
 
@@ -333,13 +298,13 @@ function RealDashboard({ real, onOpenStep }: { real: EstateState; onOpenStep?: (
             <Alert
               key={a.id}
               severity={a.severity}
-              title={a.title}
+              title={cleanDashboardText(a.title)}
               timingLabel={formatAlertTimingLabel(a)}
-              actionRequired={a.actionRequired}
+              actionRequired={cleanDashboardText(a.actionRequired)}
               onOpen={() => onOpenStep && onOpenStep(a.id)}
               actionLabel="View steps"
             >
-              {a.body}
+              {cleanDashboardText(a.body)}
             </Alert>
           ))}
           {openAlerts.length === 0 ? (
@@ -360,7 +325,7 @@ function RealDashboard({ real, onOpenStep }: { real: EstateState; onOpenStep?: (
               <li style={{ padding: "18px 20px", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>No tasks yet. They appear as documents are parsed.</li>
             ) : real.tasks.map((t, i) => (
               <li key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
-                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
+                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{cleanDashboardText(t.title)}</span>
                 <Badge tone={taskTone[t.status]}>{taskLabel[t.status]}</Badge>
               </li>
             ))}
@@ -375,9 +340,9 @@ function RealDashboard({ real, onOpenStep }: { real: EstateState; onOpenStep?: (
               <li key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
                 <Avatar name={b.name} size="sm" />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{b.name}</span>
+                  <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{cleanDashboardText(b.name)}</span>
                 </span>
-                {b.share ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{b.share}</span> : null}
+                {b.share ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{cleanDashboardText(b.share)}</span> : null}
               </li>
             ))}
           </ul>

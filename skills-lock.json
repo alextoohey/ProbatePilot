@@ -19,6 +19,24 @@
       "skillPath": "skills/iris-development/SKILL.md",
       "computedHash": "677663bc77ea89c1ba7de7ced05a2d0f16bbe7b5e75efa47a10a40091eeb039d"
     },
+    "phoenix-cli": {
+      "source": "Arize-ai/phoenix",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/phoenix-cli/SKILL.md",
+      "computedHash": "2b623981f666f4748b149b1b478f8c7a7fbf0adb28f32c200c976a3a4b0319cd"
+    },
+    "phoenix-evals": {
+      "source": "Arize-ai/phoenix",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/phoenix-evals/SKILL.md",
+      "computedHash": "173e863068218541c00dfe48dc5f85ece2551b3c6f8fa5631f3015259e037657"
+    },
+    "phoenix-tracing": {
+      "source": "Arize-ai/phoenix",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/phoenix-tracing/SKILL.md",
+      "computedHash": "d1e436b773a9429ae609d7a6ffd74a5a99ce43feec23338a93dcc20b6a50767a"
+    },
     "redis-clustering": {
       "source": "redis/agent-skills",
       "sourceType": "github",

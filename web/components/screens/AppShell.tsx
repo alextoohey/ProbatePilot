@@ -15,7 +15,6 @@ import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
 import { Sidebar } from "./Sidebar";
 import { DashboardScreen } from "./DashboardScreen";
 import { StepDetailScreen } from "./StepDetailScreen";
-import { AgentScreen } from "./AgentScreen";
 import { ChatScreen } from "./ChatScreen";
 import { UploadScreen } from "./UploadScreen";
 import { LettersScreen } from "./LettersScreen";
@@ -23,7 +22,7 @@ import { NotificationsMenu } from "./NotificationsMenu";
 import { CreateEstateModal } from "./CreateEstateModal";
 import { ProfileEditorModal } from "./ProfileEditorModal";
 
-type Route = "dashboard" | "agent" | "documents" | "chat" | "letters";
+type Route = "dashboard" | "documents" | "chat" | "letters";
 type NotifPrefs = { all: boolean; deadlines: boolean; weekly: boolean; email: boolean };
 function fallbackSteps(alert: BackendAlert): string[] {
   return [
@@ -121,7 +120,6 @@ export function AppShell() {
   }, [notifPrefs]);
   const [completingId, setCompletingId] = React.useState<string | null>(null);
   const [completionError, setCompletionError] = React.useState<string | null>(null);
-  const [rerunningAgent, setRerunningAgent] = React.useState(false);
   const E = DEMO_ESTATE;
   const I = ExecutorIcons;
 
@@ -181,7 +179,7 @@ export function AppShell() {
       controller.abort();
     };
   }, [activeEstateId]);
-  const titles: Record<Route, string> = { dashboard: "Dashboard", agent: "Agent", documents: "Documents", chat: "Estate chat", letters: "Letters" };
+  const titles: Record<Route, string> = { dashboard: "Dashboard", documents: "Documents", chat: "Estate chat", letters: "Letters" };
 
   // Load the logged-in user and their estates. A missing/stale session bounces
   // back to /welcome (the middleware also gates this route).
@@ -254,30 +252,6 @@ export function AppShell() {
       setCompletingId(null);
     }
   }
-  // Re-run the DeadlineAgent on demand from the command center, refreshing both
-  // the ranked alerts and the estate state they were derived from.
-  async function rerunAgent() {
-    if (!activeEstateId) return;
-    setRerunningAgent(true);
-    setLiveAlertsFailed(false);
-    try {
-      const alerts = await runDeadlineAgent(activeEstateId);
-      setLiveAlerts(alerts);
-      const estate = await getEstate(activeEstateId);
-      setLiveEstate(estate);
-      setEstates((cur) =>
-        cur.map((item) =>
-          item.id === activeEstateId
-            ? { ...item, phase: estate.phase, hasDocuments: item.id === "demo-milligan" || estate.documents.length > 0 }
-            : item,
-        ),
-      );
-    } catch {
-      setLiveAlertsFailed(true);
-    } finally {
-      setRerunningAgent(false);
-    }
-  }
   function switchEstate(id: string) {
     setActiveEstateId(id);
     setDetailId(null);
@@ -285,10 +259,26 @@ export function AppShell() {
     setRoute("dashboard");
   }
   // After a document is parsed, re-fetch the estate so chat/letters unlock
-  // (hasDocuments flips once the backend has a document on file).
+  // and refresh the dashboard from the same post-parse snapshot. Previously
+  // this only changed sidebar metadata, leaving next steps stale until reload.
   async function refreshEstate(id: string) {
     try {
-      const estate = await getEstate(id);
+      let estate = await getEstate(id);
+      setLiveEstate(estate);
+      setLiveAlerts(estate.alerts);
+      setEstates((cur) =>
+        cur.map((e) =>
+          e.id === id
+            ? { ...e, phase: estate.phase, hasDocuments: e.id === "demo-milligan" || estate.documents.length > 0 }
+          : e,
+        ),
+      );
+
+      const alerts = await runDeadlineAgent(id);
+      estate = await getEstate(id);
+      setLiveAlerts(alerts);
+      setLiveEstate(estate);
+      setLiveAlertsFailed(false);
       setEstates((cur) =>
         cur.map((e) =>
           e.id === id
@@ -297,7 +287,9 @@ export function AppShell() {
         ),
       );
     } catch {
-      /* leave the current profile in place if the refresh fails */
+      // Keep the successfully fetched estate visible if only the agent rerun
+      // fails; its stored alerts are still more current than the old snapshot.
+      setLiveAlertsFailed(true);
     }
   }
   function createEstate(est: EstateProfile) {
@@ -313,9 +305,7 @@ export function AppShell() {
     ? []
     : liveAlerts.length > 0
       ? liveAlerts.map((a) => toDisplayAlert(a, guidanceAlerts))
-      : active.seeded
-        ? []
-        : guidanceAlerts;
+      : [];
   const detailItem = detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
   const detailCompleted = detailItem
     ? completedIds.includes(detailItem.id) || Boolean((detailItem as BackendAlert).dismissed)
@@ -339,8 +329,6 @@ export function AppShell() {
     crumb = titles[route];
     if (route === "dashboard")
       body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} liveAlerts={liveAlerts} liveEstate={liveEstate} liveAlertsFailed={liveAlertsFailed} />;
-    else if (route === "agent")
-      body = <AgentScreen key={active.id} estate={active} alerts={allAlerts} completedIds={completedIds} liveEstate={liveEstate} liveAlertsFailed={liveAlertsFailed} rerunning={rerunningAgent} completingId={completingId} onOpenStep={openStep} onComplete={completeStep} onRerun={rerunAgent} />;
     else if (route === "documents") body = <UploadScreen key={active.id} estate={active} onDocumentsChanged={() => refreshEstate(active.id)} />;
     else if (route === "chat") body = <ChatScreen key={active.id} estate={active} />;
     else if (route === "letters") body = <LettersScreen key={active.id} estate={active} />;
