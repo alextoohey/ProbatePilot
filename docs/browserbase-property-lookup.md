@@ -1,6 +1,9 @@
 # Browserbase — Property Value Auto-Lookup
 
-**Status**: Not yet integrated. Revisit after core pipeline is working end-to-end.  
+**Status**: Roadmap — not built. A different second agent shipped instead: the
+**ResearchAgent** (`agent/researcher/research_agent.py`), which watches weekly for
+California probate-law changes rather than scraping property values. This Browserbase
+property-lookup idea remains a future extension.  
 **Owner**: TBD (likely Member 3 — fits naturally into the DeadlineAgent tool set)  
 **Estimated build time**: 2–3 hours once the core is stable  
 **Dependencies**: `browserbase`, `playwright`, existing `agent/llm/claude.py`
@@ -19,7 +22,7 @@ Right now the estate has `appraised: false` on two assets and no value attached.
 Browserbase lets the DeadlineAgent go get that estimate itself — navigating to Zillow or the county assessor, pulling a current value, and attaching it to the asset. The alert softens from CRITICAL ("no data at all") to WARNING ("estimate found, certified appraisal still required").
 
 **Demo beat this enables:**  
-*"ClearPath didn't just tell Dana the appraisal was missing — it looked it up."*
+*"Executor AI didn't just tell Dana the appraisal was missing — it looked it up."*
 
 ---
 

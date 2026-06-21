@@ -26,6 +26,7 @@ web/
 │   ├── upload/page.tsx              # Upload page
 │   └── api/
 │       ├── agent/[...path]/route.ts # Sentry-wrapped proxy to the Python service
+│       ├── auth/{login,logout,register,me}/route.ts  # Auth proxied to the agent
 │       └── voice/
 │           ├── transcribe/route.ts  # Audio → Deepgram STT → text
 │           └── speak/route.ts       # Text → Deepgram TTS → audio
@@ -76,8 +77,8 @@ Include a voice toggle. If Member 2's search results carry source/score, surface
 - **TTS**: in voice mode, Claude's response text is sent to the speak route (Deepgram
   text-to-speech) and played back.
 Frame the use case clearly in the demo: the executor is **on the phone with a bank**,
-hands-free, and ClearPath reads them the script and answers questions out loud. That makes
-voice essential, not decorative.
+hands-free, and Executor AI reads them the script and answers questions out loud. That
+makes voice essential, not decorative.
 
 ### Upload (`DocumentUpload.tsx`) & Letters (`LetterPreview.tsx`)
 - Upload: drag-and-drop a PDF → POST to the parse endpoint → show a parsing indicator →
@@ -120,8 +121,9 @@ transaction is visible in the Sentry dashboard during the demo.
 ---
 
 ## Demo Script (what to show judges)
-1. **Open the dashboard** — two red critical alerts are already there. "DE-160 due in
-   9 days, no appraisal uploaded." The proactive intelligence lands before you speak.
+1. **Open the dashboard** — two red critical alerts are already there: creditors not yet
+   notified, and the DE-160 inventory/appraisal outstanding. The proactive intelligence
+   lands before you speak.
 2. **Open chat** — ask *"What happens if I miss the DE-160 deadline?"* Claude answers with
    the exact date, the statute, and Dana's personal liability — grounded in her estate.
 3. **Voice** — hold the mic: *"What do I need to do this week?"* Claude answers; tap voice

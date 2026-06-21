@@ -1,13 +1,24 @@
 # Agent Service
 
-Python service for document intelligence, estate memory, RAG chat, DeadlineAgent, and
-letter generation.
+Python FastAPI service: auth, document intelligence, estate memory, RAG chat, the
+DeadlineAgent and ResearchAgent, letter generation, and email notifications. Runs entirely
+on `claude-sonnet-4-6` today (see `DOCUMENT_MODEL` / `REASONING_MODEL` in
+`llm/claude.py`). See [the root CLAUDE.md](../CLAUDE.md#api-surface) for the full route
+list.
 
-## Ownership
+## Layout
 
-- Member 1: `llm/`, `documents/`, extraction prompts, `/parse-document`
-- Member 2: `schemas/`, `store/`, `seed/`, data contracts
-- Member 3: `agents/`, `rules/`, `observability/`, chat, letters
+- `llm/` — Anthropic client (extract / stream / agent helpers) + OpenAI embeddings
+- `documents/` — router + will / bank statement / deed / creditor-notice parsers
+- `agents/` — the DeadlineAgent tool-use loop
+- `researcher/` — the weekly probate-law ResearchAgent
+- `rules/` — the California probate ruleset
+- `schemas/` — Pydantic contracts (estate, api, documents, auth)
+- `store/` — KV + vector boundary (memory / Upstash / Redis Cloud)
+- `auth/` — bcrypt password hashing + cookie sessions
+- `notify/` — Resend weekly recap / alert digest
+- `observability/` + `evals/` — Phoenix tracing and the LLM-as-judge eval
+- `seed/` — demo estate reset
 
 ## Local Run
 
@@ -22,8 +33,10 @@ cp .env.example .env   # fill in keys
 uv run uvicorn main:app --reload --port 8000
 ```
 
-The current store and AI helpers include in-memory/offline placeholders. Add real Redis,
-Claude, embeddings, and Phoenix tracing behavior behind the existing module functions.
+The store defaults to `STORE_BACKEND=memory`, so the service boots and runs offline; set
+`STORE_BACKEND=upstash` (or `redis_cloud`) with the matching credentials for a real store.
+AI helpers no-op gracefully when `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are unset, so the
+deterministic fallbacks still serve the demo.
 
 ## Phoenix tracing
 

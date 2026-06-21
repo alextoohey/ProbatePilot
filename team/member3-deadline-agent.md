@@ -3,8 +3,9 @@
 **Owner**: Sameer
 **Language**: Python (`agent/`)
 **Track dependency**: The DeadlineAgent is the product moat — the thing that makes
-ClearPath an agent, not a chatbot. Your alerts are the hero of the demo. You also own the
-RAG chat endpoint and the Phoenix tracing used to inspect and evaluate the agent.
+Executor AI an agent, not a chatbot. Your alerts are the hero of the demo. You also own
+the RAG chat endpoint, the weekly ResearchAgent, letter generation, and the Phoenix
+tracing + eval used to inspect and evaluate the agent.
 
 ---
 
@@ -15,7 +16,9 @@ executor makes an expensive mistake. You also own the **RAG chat endpoint** (the
 conversational counterpart to the agent), **letter generation**, and **Phoenix**
 tracing across the whole Python service.
 
-This is the most reasoning-heavy role. Lean on `claude-opus-4-8` and adaptive thinking.
+This is the most reasoning-heavy role. The service currently runs on `claude-sonnet-4-6`
+via `REASONING_MODEL` in `agent/llm/claude.py`; point it at `claude-opus-4-8` for adaptive
+thinking on the heavier reasoning paths.
 
 ---
 
@@ -24,16 +27,20 @@ This is the most reasoning-heavy role. Lean on `claude-opus-4-8` and adaptive th
 agent/
 ├── agents/
 │   └── deadline_agent.py     # The Claude tool-use agent loop
+├── researcher/
+│   └── research_agent.py     # Weekly probate-law watch agent (/research-agent)
 ├── rules/
 │   └── california_probate.py # The hardcoded CA probate ruleset (11 rules)
 ├── prompts/
 │   ├── system.py             # Base chat system prompt (assembled per request)
 │   └── letters.py            # Letter-generation prompts (5+ letter types)
-└── observability/
-    └── phoenix.py            # Phoenix OTLP / OpenInference setup + span helper
+├── observability/
+│   └── phoenix.py            # Phoenix OTLP / OpenInference setup + span helper
+└── evals/
+    └── deadline_next_steps_quality.py  # LLM-as-judge eval for agent output
 ```
-Plus the routes in `agent/main.py`: `POST /deadline-agent`, `POST /chat` (SSE),
-`POST /generate-letter`.
+Plus the routes in `agent/main.py`: `POST /deadline-agent`, `POST /research-agent`,
+`POST /chat` (SSE), `POST /chat-suggestions`, `POST /generate-letter`.
 
 ---
 
@@ -65,9 +72,10 @@ expose the rule evaluations (and estate-state reads) as typed tools, give Claude
 and the ruleset, and let it iterate — checking rules, computing days-remaining, deciding
 severity, deduplicating against existing alerts, and (crucially) reasoning about
 **cross-rule consequences** (e.g. "no appraisal blocks the DE-160 filing," "distributing
-before creditor notification creates personal liability"). Use `claude-opus-4-8` with
-adaptive thinking. Output a ranked `Alert[]` (critical first), write it back through
-Member 2's helper, and record `rules_checked` / `alerts_fired` on the Phoenix span.
+before creditor notification creates personal liability"). It runs on `REASONING_MODEL`
+(`claude-sonnet-4-6` today; swap to `claude-opus-4-8` for adaptive thinking). Output a
+ranked `Alert[]` (critical first), write it back through Member 2's helper, and record
+`rules_checked` / `alerts_fired` on the Phoenix span.
 
 On fresh demo seed data it must produce the two CRITICAL alerts (DE-160 and creditor
 notification). The SDK's tool-runner handles the loop mechanics; you own the tool design

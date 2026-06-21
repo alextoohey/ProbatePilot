@@ -1,8 +1,12 @@
 # Workstreams
 
+> **Status:** the build is essentially complete — all of the surfaces below are now
+> implemented. This file is kept as the original parallel-development map showing where
+> each member started and the stable boundaries they relied on.
+
 Use this as the starting map for parallel development. The detailed task briefs still live
-in `team/`; this file explains where each person should begin and which placeholder APIs
-they can rely on.
+in `team/`; this file explains where each person began and which stable APIs they could
+rely on.
 
 ## Member 1: Document Intelligence
 
@@ -36,14 +40,14 @@ Start in:
 
 Stable dependencies available now:
 
-- Pydantic estate, alert, task, document, and API models are importable.
+- Pydantic estate, alert, task, document, and auth models are importable.
 - TypeScript interfaces and Zod schemas mirror the core shapes.
-- Redis Cloud KV is wired behind the store helpers, and Redis 8 Vector Sets power
-  semantic retrieval when `STORE_BACKEND=redis_cloud`.
+- KV is wired behind the store helpers, with vector search via Upstash Vector (default) or
+  Redis 8 Vector Sets (`STORE_BACKEND=redis_cloud`), and an in-memory fallback.
 - `/seed` exists and is idempotent for `demo-milligan`.
 
-Before real demo usage, keep the seed/read and upsert/search integration checks in
-`docs/database.md` passing against Redis Cloud.
+Keep the seed/read and upsert/search integration checks in `docs/database.md` passing
+against the configured backend.
 
 ## Member 3: DeadlineAgent + Reasoning
 

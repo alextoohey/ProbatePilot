@@ -42,6 +42,7 @@ The backend currently has first-class parsers for:
 - Will or testament documents
 - Bank statements
 - Deeds
+- Creditor notices
 
 The backend accepts but may classify these as `unknown` until additional parsers are
 implemented:
@@ -49,7 +50,6 @@ implemented:
 - Letters testamentary
 - Death certificate
 - DE-160 inventory packet
-- Creditor notice
 - Mortgage statement
 - Vehicle title
 - Debt payment receipt
@@ -367,10 +367,10 @@ Use these after the manual flow to confirm the backend contract is intact.
 curl http://localhost:8000/health
 ```
 
-Expected:
+Expected (the `tracing` block reports Phoenix + instrumentor readiness):
 
 ```json
-{"status":"ok"}
+{"status":"ok","tracing":{ ... }}
 ```
 
 ### Parse A Supported Fixture
@@ -442,8 +442,9 @@ Mark the workflow complete only when all of these are true:
 These are not automatic failures for this setup-focused pass, but they should become
 tracked issues if observed:
 
-- New estates are currently UI-local until backend create-estate support is added.
-- Parser support is limited to will, bank statement, and deed.
+- `POST /estates` now persists newly created estates server-side; verify the UI uses it
+  rather than staying UI-local.
+- Parser support is limited to will, bank statement, deed, and creditor notice.
 - Appointment date is not collected by the create-estate modal today.
 - Phase progress is mostly driven by completed UI alert cards rather than persisted
   estate state.

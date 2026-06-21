@@ -7,7 +7,7 @@ expensive legal and financial mistakes during estate administration. It parses e
 documents into a live intelligence graph and proactively alerts the executor *before*
 deadline violations and liability triggers occur — not after.
 
-The core insight: most AI products answer questions. ClearPath tells the executor what
+The core insight: most AI products answer questions. Executor AI tells the executor what
 they **don't know to ask**, before it costs them.
 
 ### One-sentence pitch
@@ -15,19 +15,27 @@ they **don't know to ask**, before it costs them.
 > intelligence graph of the estate and running a true agent that alerts before problems
 > happen."
 
-### The three capabilities (in build-priority order)
-1. **Document Intelligence** — Upload a will, deed, bank statement, or insurance policy.
+### The core capabilities (in build-priority order)
+1. **Document Intelligence** — Upload a will, deed, bank statement, or creditor notice.
    Claude parses it into structured data (beneficiaries, assets, debts, dates, special
-   instructions). Chunks are embedded and stored in Redis for semantic search; key facts
-   are merged into a living estate-state graph in Redis KV.
-2. **Estate-Aware Chat + Voice** — Every query runs a Redis vector search; retrieved
-   chunks are injected into Claude's context. Answers are grounded in *this* estate's
-   documents, not generic probate advice. Voice (Deepgram STT/TTS) makes it usable
-   hands-free during phone calls with banks and institutions.
+   instructions). Chunks are embedded and stored for semantic search; key facts are merged
+   into a living estate-state graph in Redis KV.
+2. **Estate-Aware Chat + Voice** — Every query runs a vector search; retrieved chunks are
+   injected into Claude's context. Answers are grounded in *this* estate's documents, not
+   generic probate advice. Voice (Deepgram STT/TTS) makes it usable hands-free during phone
+   calls with banks and institutions.
 3. **DeadlineAgent (the moat)** — A genuine agent: it reads estate state, reasons over
    California probate statutes and liability triggers using Claude tool-use, and fires
    alerts ranked by urgency and consequence. It runs on demand and after every document
    upload. It does not wait to be asked.
+
+Now shipped alongside these:
+4. **ResearchAgent** — A second agent that wakes on a weekly cadence to scan for changes
+   to California probate process/law and surfaces review alerts (`/research-agent`,
+   `agent/researcher/`).
+5. **Accounts, letters & email** — Cookie-session auth (register/login), per-estate
+   creation, Claude-drafted letters that can be saved to the estate, and emailed weekly
+   recaps / alert digests via Resend.
 
 ---
 
@@ -48,13 +56,13 @@ memory.** Each team member works mostly in one language.
 
 ### AI / LLM (Python `agent/`)
 - **Anthropic Python SDK** (`anthropic`)
-  - `claude-opus-4-8` — the DeadlineAgent's reasoning and the RAG chat. This is the
-    "hard reasoning on a meaningful human problem" that the Anthropic prize rewards.
-    Use **adaptive thinking** for the agent's multi-step deadline/liability analysis.
-  - `claude-sonnet-4-6` — document parsing (vision + structured output) and letter
-    drafting. Cheaper and fast for the higher-volume, lower-novelty calls.
-  - **Structured extraction** via `messages.parse()` with Pydantic models — Claude output
-    is validated into typed objects, never hand-parsed JSON.
+  - `claude-sonnet-4-6` — the model wired across the service today: document parsing
+    (vision + structured output), the DeadlineAgent / ResearchAgent reasoning, the RAG
+    chat, and letter drafting. `agent/llm/claude.py` centralizes this as `DOCUMENT_MODEL`
+    and `REASONING_MODEL` (both `claude-sonnet-4-6`); point `REASONING_MODEL` at
+    `claude-opus-4-8` to restore the heavier reasoning path for the agents and chat.
+  - **Structured extraction** via a forced tool-call with the Pydantic model's JSON
+    schema — Claude output is validated into typed objects, never hand-parsed JSON.
   - **Vision / PDF** via document/image content blocks for scanned wills and statements.
   - **Prompt caching** on the (large, stable) estate-state system prompt so repeated chat
     turns and agent runs are cheap and fast.
@@ -63,10 +71,15 @@ memory.** Each team member works mostly in one language.
 - **OpenAI embeddings** (`text-embedding-3-small`) for document chunks.
 
 ### Memory & vector store
-- **Redis Cloud**. KV holds `estate:{id}`; Redis 8 Vector Sets hold embedded document
-  chunks under `estate:{id}:chunks`, with chunk text/source stored as vector attributes.
-  `text-embedding-3-small` produces 1536-dimensional vectors. This is **agent memory +
-  retrieval**, which is exactly what the Redis prize asks for.
+- **Redis-backed store** behind `agent/store/redis_client.py`. KV holds `estate:{id}`;
+  a vector index holds embedded document chunks under `estate:{id}:chunks`, with chunk
+  text/source stored as attributes/metadata. `text-embedding-3-small` produces
+  1536-dimensional vectors. The store layer supports three interchangeable backends via
+  `STORE_BACKEND`: **Upstash** (Upstash Redis REST + Upstash Vector — the default cloud
+  path), **Redis Cloud** (KV + Redis 8 Vector Sets), and **memory** (offline dev). This is
+  **agent memory + retrieval**, which is exactly what the Redis prize asks for.
+- **Auth & sessions** also live in this store: bcrypt-hashed accounts and cookie sessions
+  (`agent/auth/`).
 
 ### Voice (TypeScript `web/`)
 - **Deepgram** STT (executor speaks a question hands-free) and TTS (Claude's call-script
@@ -95,7 +108,7 @@ memory.** Each team member works mostly in one language.
 ### Main track
 - **Ddoski's World (social impact).** Estate administration is a systemic-inequity
   problem: families without money for a probate attorney spend ~180 hours and make costly
-  mistakes nobody warned them about. ClearPath gives them an expert in their corner. This
+  mistakes nobody warned them about. Executor AI gives them an expert in their corner. This
   is also squarely the Anthropic theme of "economic opportunity / shifting what's possible
   for people."
 
@@ -103,16 +116,18 @@ memory.** Each team member works mostly in one language.
 | Sponsor | Prize | What must be true at demo |
 |---------|-------|---------------------------|
 | **Anthropic** | $5k API credits + office hours | Built with Claude; a true agent (DeadlineAgent) doing hard, proactive reasoning on a meaningful human problem. |
-| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. Redis Cloud KV holds the live state graph; Redis 8 Vector Sets power per-estate retrieval. |
+| **Redis** | Mac Minis + 25k cloud credits | Redis used as agent memory + vector retrieval, not caching. KV holds the live state graph; a vector index powers per-estate retrieval (Upstash by default; Redis Cloud + Redis 8 Vector Sets also supported). |
 | **Deepgram** | Nintendo Switch 2 / member | STT + TTS demonstrably essential — the executor uses voice during a simulated bank phone call. |
 | **Sentry** | Nintendo Switch 2 / member | Observability on the web layer + a team that course-corrects under pressure. ~30 min of setup. |
 | **Phoenix** | $1k | Phoenix tracing on the Python agent that *visibly improves the app* (catches a bad extraction / slow tool call during the build). |
 
-### Deliberately out of scope (roadmap, not the hackathon)
-- **Browserbase** (web-automation agent that looks up county-assessor property values),
+### Beyond the original plan
+- **Shipped:** a second agent (the **ResearchAgent**) that watches weekly for California
+  probate-law changes, plus accounts/auth, per-estate creation, saved letters, and emailed
+  alert digests — none of which were in the original 24-hour scope.
+- **Still roadmap:** **Browserbase** (web-automation agent that looks up county-assessor
+  property values — see [docs/browserbase-property-lookup.md](docs/browserbase-property-lookup.md)),
   **Fetch.ai** (uAgents marketplace listing), **Orkes/Band** (multi-agent orchestration).
-  All are real extensions of the agent, all add architectural risk a 24-hour demo won't
-  reward. Mention them as the roadmap; do not build them.
 
 ---
 
@@ -136,31 +151,42 @@ clearpath-estate/
 │   │   ├── claude.py               # Anthropic client + extract/stream/agent helpers
 │   │   └── embeddings.py           # OpenAI embedding calls
 │   ├── store/
-│   │   └── redis_client.py         # Redis KV + vector helpers
-│   ├── schemas/                    # Pydantic models (estate, alerts, extractions)
-│   ├── documents/                  # Per-doc-type parsers + router
+│   │   └── redis_client.py         # KV + vector helpers (memory/upstash/redis_cloud)
+│   ├── auth/
+│   │   └── security.py             # bcrypt password hashing + cookie sessions
+│   ├── schemas/                    # Pydantic models (estate, api, documents, auth)
+│   ├── documents/                  # Router + will/bank/deed/creditor parsers, pdf_reader
 │   ├── agents/
 │   │   └── deadline_agent.py       # The tool-use agent loop
+│   ├── researcher/
+│   │   └── research_agent.py       # Weekly probate-law watch agent
 │   ├── rules/
 │   │   └── california_probate.py   # Hardcoded CA probate ruleset
+│   ├── notify/
+│   │   └── email.py                # Resend weekly recap / alert digest
 │   ├── prompts/                    # System prompt, extraction, letter prompts
 │   ├── observability/
 │   │   └── phoenix.py              # Phoenix OTLP / OpenInference setup
+│   ├── evals/
+│   │   └── deadline_next_steps_quality.py  # LLM-as-judge eval
+│   ├── tests/                      # pytest suite (rules, agent, chat, letters, …)
 │   └── seed/
 │       └── demo_estate.py          # DEMO_ESTATE + reset
 │
 └── web/                            # Next.js frontend — the experience
     ├── app/
     │   ├── page.tsx                # Dashboard: overview + alerts + tasks
+    │   ├── welcome/page.tsx        # Auth landing
     │   ├── chat/page.tsx           # Estate-aware chat
     │   ├── upload/page.tsx         # Document upload
     │   └── api/
     │       ├── agent/[...path]/route.ts   # Sentry-wrapped proxy to Python
+    │       ├── auth/{login,logout,register,me}/route.ts
     │       └── voice/
     │           ├── transcribe/route.ts
     │           └── speak/route.ts
-    ├── components/                 # Dashboard, AlertBanner, Chat, Voice, Upload, Letter
-    ├── lib/                        # agentClient, deepgram, sentry, schemas (Zod)
+    ├── components/                 # Screens, ds/ design system, AlertBanner, Chat, Voice…
+    ├── lib/                        # agentClient, deepgram, sentry, design, schemas (Zod)
     └── types/                      # TS types mirroring the Pydantic contract
 ```
 
@@ -178,6 +204,7 @@ deceasedName: str
 dateOfDeath: str            # ISO date
 appointmentDate: str        # ISO date — letters testamentary issued
 state: "california"
+county: str?                # e.g. "Alameda"
 executor: { name: str, email: str }
 assets: Asset[]
 debts: Debt[]
@@ -185,6 +212,7 @@ beneficiaries: Beneficiary[]
 documents: UploadedDocument[]
 tasks: Task[]
 alerts: Alert[]
+letters: SavedLetter[]      # drafts saved to the estate
 phase: 1 | 2 | 3 | 4 | 5 | 6
 createdAt: str
 updatedAt: str
@@ -215,9 +243,10 @@ dismissed: bool
 ```
 
 ### Document extraction (Claude output, one per doc type)
-Each parser returns a typed extraction (e.g. `WillExtraction`, `BankStatementExtraction`,
-`DeedExtraction`) carrying the structured facts plus `rawChunks: str[]` — 3–5 sentence
-segments meant for embedding. Member 1 and Member 2 agree these shapes together.
+Each parser returns a typed extraction (`WillExtraction`, `BankStatementExtraction`,
+`DeedExtraction`, `CreditorNoticeExtraction`) carrying the structured facts plus
+`rawChunks: str[]` — 3–5 sentence segments meant for embedding. Defined in
+`agent/schemas/documents.py`.
 
 ---
 
@@ -263,7 +292,7 @@ Message (typed, or Deepgram transcription)
   → embed query → Redis Vector Set search (top-k within `estate:{id}:chunks`)
   → load estate state from Redis KV
   → build cached system prompt: [base] + [estate state] + [retrieved chunks]
-  → Opus 4.8 stream → SSE to the browser
+  → Sonnet 4.6 stream → SSE to the browser
   → if voice mode: web/ pipes text to Deepgram TTS
   → Phoenix span { action: chat_query }
 ```
@@ -272,7 +301,7 @@ Message (typed, or Deepgram transcription)
 ```
 Triggered on demand or after every parse
   → load estate state
-  → Claude tool-use loop (Opus 4.8, adaptive thinking):
+  → Claude tool-use loop (Sonnet 4.6; swap REASONING_MODEL to Opus 4.8 for adaptive thinking):
        Claude calls typed rule-evaluation tools over california_probate rules,
        computes days_remaining (dateutil), decides severity, dedupes,
        and reasons about cross-rule consequences (e.g. appraisal blocks DE-160)
@@ -334,7 +363,7 @@ DEMO_ESTATE  (id: demo-milligan)
   dateOfDeath:     2026-06-03
   appointmentDate: 2026-06-10
   state:           california
-  executor:        Dana Milligan <dana@demo.com>
+  executor:        Dana Milligan <dana@gmail.com>   # demo email recipient
 
   assets:
     real_estate    1847 Marin Ave, Berkeley CA   ~$220,000   appraised: false
@@ -350,14 +379,20 @@ DEMO_ESTATE  (id: demo-milligan)
   beneficiaries:
     Dana Milligan 40% · Sarah Milligan 40% · Marcus Milligan 20%
 
+  documents: seeded will, Wells Fargo statement, grant deed
+  tasks:     phase-1 items done (petition, death certs, EIN); phase-2 open
+             (notify creditors, prepare DE-160)
   phase: 2
 ```
 
-Designed to fire two CRITICAL alerts live:
-1. DE-160 Inventory & Appraisal due ~9 days out, no property appraisal uploaded.
-2. Creditors not yet notified — the 30-day window from June 10 nearly elapsed.
+Designed to fire two CRITICAL alerts live (exact day counts depend on the run date):
+1. Creditors not yet notified — the 30-day certified-mail window from the June 10
+   appointment is closing.
+2. DE-160 Inventory & Appraisal outstanding — no appraisal on the Berkeley home or the
+   Honda Civic.
 
-A `POST /seed` endpoint resets this to a known-good state between demo runs.
+The canonical object is `build_demo_estate()` in `agent/seed/demo_estate.py`; a
+`POST /seed` endpoint resets it to a known-good state between demo runs.
 
 ---
 
@@ -381,10 +416,10 @@ A `POST /seed` endpoint resets this to a known-good state between demo runs.
 
 ## 11. Positioning
 
-**Before ClearPath:** Dana spends 180 hours, makes three costly mistakes, pays $4,200 in
+**Before Executor AI:** Dana spends 180 hours, makes three costly mistakes, pays $4,200 in
 unexpected fees, and nobody ever told her the rules that would have prevented all of it.
 
-**After ClearPath:** Dana uploads three documents. The AI reconstructs her estate. The
+**After Executor AI:** Dana uploads three documents. The AI reconstructs her estate. The
 agent tells her the next three actions. It catches the mistake before it happens.
 
 Every architectural decision serves that story. Nothing that doesn't serve it gets built

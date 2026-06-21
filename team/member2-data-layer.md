@@ -39,20 +39,21 @@ web/
 
 ## What's Already Done
 
-The scaffold has working stubs for everything you own — your job is to **refine and
-replace**, not start from scratch:
+Everything you own is now implemented; this section records the shape of it:
 
-- `agent/schemas/estate.py` — full Pydantic models for `EstateState`, `Asset`, `Debt`,
-  `Beneficiary`, `Task`, `Alert`, `UploadedDocument`. Already importable, no errors.
+- `agent/schemas/estate.py` — full Pydantic models for `EstateState` (with `county` and
+  `letters`), `Asset`, `Debt`, `Beneficiary`, `Task`, `Alert`, `UploadedDocument`,
+  `SavedLetter`.
 - `agent/schemas/documents.py` — `WillExtraction`, `BankStatementExtraction`,
-  `DeedExtraction` with all fields defined. Agree any additions with Member 1.
+  `DeedExtraction`, `CreditorNoticeExtraction`.
 - `agent/schemas/api.py` — request/response models for every route.
-- `agent/store/redis_client.py` — **in-memory implementation** with the full stable API
-  already wired (`get_estate_state`, `set_estate_state`, `merge_estate_state`,
-  `upsert_vectors`, `semantic_search`, `write_alerts`, `get_alerts`, `add_document`,
-  `seed_demo_estate`). Every other member already calls these.
-- `agent/seed/demo_estate.py` — `DEMO_ESTATE` object complete. `POST /seed` exists in
-  `main.py` and works today.
+- `agent/schemas/auth.py` — `User`, register/login, and `MeResponse` models.
+- `agent/store/redis_client.py` — the full stable API (`get_estate_state`,
+  `set_estate_state`, `merge_estate_state`, `upsert_vectors`, `semantic_search`,
+  `write_alerts`, `get_alerts`, `add_document`, `seed_demo_estate`, plus user/session and
+  research-run helpers), implemented across **three backends** (`memory`, `upstash`,
+  `redis_cloud`) behind one interface.
+- `agent/seed/demo_estate.py` — `DEMO_ESTATE` object complete. `POST /seed` works.
 - `web/types/` and `web/lib/schemas/` — TS types and Zod schemas mirroring the Pydantic
   models.
 
@@ -68,24 +69,19 @@ Read through `agent/schemas/` and `web/types/`. The core shapes are done; your j
   same field names on both sides.
 - Keep types and validators cleanly separated within each language (models vs. schemas).
 
-### Step 2 — Replace the in-memory store with real Redis
-`agent/store/redis_client.py` currently stores everything in Python dicts (`_ESTATES`,
-`_VECTORS`). **All function signatures must stay identical** — other members already import
-and call them. Only the implementation changes.
+### Step 2 — The real-Redis store (implemented)
+`agent/store/redis_client.py` keeps **all function signatures identical** across backends —
+other members import and call them without caring which store is live. The env var
+`STORE_BACKEND` in `agent/.env` selects the implementation:
+- `STORE_BACKEND=memory` — default, works with no credentials (Python dicts)
+- `STORE_BACKEND=upstash` — Upstash Redis REST (`upstash-redis`) + Upstash Vector
+  (`upstash-vector`) — the default cloud path
+- `STORE_BACKEND=redis_cloud` — Redis Cloud KV + Redis 8 Vector Sets via the `redis`
+  Python client (`REDIS_URL`)
 
-The env var `STORE_BACKEND` in `agent/.env` is already wired as a toggle:
-- `STORE_BACKEND=memory` — current default, works with no credentials
-- `STORE_BACKEND=upstash` — switch to real Redis once credentials are ready
-
-Pick one provider:
-- **Upstash** (recommended) — serverless, REST-based, no connection management. Use
-  `upstash-redis` for KV and `upstash-vector` for the vector index.
-- **Redis Cloud** — sponsor credits available; use the `redis` Python client.
-
-Use Redis Cloud for the hackathon sponsor story. The current implementation stores estate
-KV under `estate:{id}` and uses Redis 8 Vector Sets under `estate:{id}:chunks`, with
-`text-embedding-3-small` vectors at 1536 dimensions. Keep the provider details behind
-this module so a later switch is a one-file change.
+All three store estate KV under `estate:{id}` and document chunks under
+`estate:{id}:chunks`, with `text-embedding-3-small` vectors at 1536 dimensions. Provider
+details stay behind this module so switching is a one-env-var change.
 
 Real Redis implementation checklist (from `docs/database.md`):
 1. Create the `estate_chunks` vector index with the correct embedding dimension (1536 for
@@ -125,8 +121,8 @@ is wired correctly before everyone depends on it.
 - [ ] `redis_client.py` exposes get/set/merge estate, upsert/search vectors (filtered by
       `estateId`), and read/write alerts.
 - [ ] `POST /seed` writes DEMO_ESTATE and round-trips (write → read back) without error.
-- [ ] Both KV and Redis Vector Sets connect and are verified by a seed-then-read +
-      upsert-then-search check.
+- [ ] KV and the vector index (Upstash Vector or Redis 8 Vector Sets) connect and are
+      verified by a seed-then-read + upsert-then-search check.
 
 ---
 

@@ -1,17 +1,20 @@
 # Database Contract
 
-ClearPath uses Redis as the shared database for the hackathon:
+Executor AI uses Redis as the shared database:
 
-- Redis KV stores canonical estate state.
+- Redis KV stores canonical estate state (and bcrypt-hashed accounts / sessions).
 - Redis vector search stores embedded document chunks for RAG and agent memory.
 - The rest of the app must access Redis only through `agent/store/redis_client.py`.
 
-The implementation supports three backends behind the same function names:
+The implementation supports three interchangeable backends behind the same function names,
+selected by `STORE_BACKEND`:
 
-- `STORE_BACKEND=memory` — local in-memory KV + vector fallback for offline development.
+- `STORE_BACKEND=memory` — local in-memory KV + vector fallback for offline development
+  (the `.env.example` default).
+- `STORE_BACKEND=upstash` — Upstash Redis REST for KV plus Upstash Vector for RAG chunks.
+  This is the default cloud path.
 - `STORE_BACKEND=redis_cloud` — Redis Cloud stores canonical estate KV and uses Redis 8
   Vector Sets (`VADD` / `VSIM`) for per-estate semantic retrieval.
-- `STORE_BACKEND=upstash` — Upstash Redis REST for KV plus Upstash Vector for RAG chunks.
 
 ## Ownership
 
@@ -71,18 +74,19 @@ should stay stable.
 
 ## Redis Implementation Checklist
 
-Before the demo, Member 2 should replace the in-memory implementation with real Redis:
+All three backends are implemented behind the stable store API. To stand up a real Redis
+store, this is the checklist the implementation satisfies:
 
-1. Pick one Redis provider: Upstash or Redis Cloud.
+1. Pick one Redis provider: Upstash (default) or Redis Cloud.
 2. For Redis Cloud, confirm `VADD`, `VSIM`, and `VDIM` commands are available.
    For Upstash, create the Vector index using dimension `1536`.
 3. Store `EstateState` as JSON at `estate:{estateId}`.
 4. Validate every read back through Pydantic before returning it.
-5. Implement vector upsert with `estateId`, `source`, `documentType`, and `chunkIndex`
+5. Vector upsert carries `estateId`, `source`, `documentType`, and `chunkIndex`
    metadata/attributes.
-6. Implement semantic search that cannot cross estates.
-7. Keep `/seed` idempotent: it should reset `demo-milligan` to the known demo state.
-8. Add one integration check: seed, read estate, upsert chunks, search by estate ID.
+6. Semantic search cannot cross estates.
+7. `/seed` is idempotent: it resets `demo-milligan` to the known demo state.
+8. Integration coverage: seed, read estate, upsert chunks, search by estate ID.
 
 ## Environment
 

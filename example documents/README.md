@@ -64,6 +64,6 @@ Use the files in numeric order for the happy-path workflow:
 12. `10_debt_payment_receipt_chase_visa.pdf`
 13. `11_distribution_receipt.pdf`
 
-The current parser should recognize the will, bank statement, and deed. The remaining
-fixtures are valid uploads for workflow testing and may be classified as `unknown` until
-more document parsers are added.
+The current parser should recognize the will, bank statement, deed, and creditor notice.
+The remaining fixtures are valid uploads for workflow testing and may be classified as
+`unknown` until more document parsers are added.

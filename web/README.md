@@ -1,12 +1,18 @@
 # Web App
 
-Next.js frontend for the Executor AI dashboard, chat, upload, voice, and generated
-letters.
+Next.js 14 frontend for Executor AI: auth (login / register), dashboard, estate-aware
+chat, document upload, voice, and generated letters. It talks to the Python agent only
+through a thin Sentry-wrapped proxy (`app/api/agent/[...path]`) plus dedicated auth and
+voice routes.
 
-## Ownership
+## Layout
 
-- Member 4 owns `app/`, `components/`, `lib/agentClient.ts`, voice routes, and UI polish.
-- Member 2 owns the TS contracts in `types/` and Zod schemas in `lib/schemas/`.
+- `app/` — pages (`welcome`, dashboard, `chat`, `upload`) and route handlers
+  (`api/auth/*`, `api/voice/*`, `api/agent/*`)
+- `components/` — `screens/` (AppShell, Dashboard, Chat, Letters, Upload, …), the `ds/`
+  design system, and shared widgets (AlertBanner, VoiceButton, …)
+- `lib/` — `agentClient.ts`, `deepgram.ts`, `sentry.ts`, `design/`, and Zod schemas
+- `types/` — TypeScript contracts mirroring the Pydantic models
 
 ## Local Run
 

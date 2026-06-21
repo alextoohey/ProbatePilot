@@ -25,9 +25,11 @@ agent/
 │   └── embeddings.py        # OpenAI text-embedding-3-small calls
 ├── documents/
 │   ├── router.py            # Detect document type, dispatch to the right parser
+│   ├── pdf_reader.py        # PDF/text + image (HEIC) extraction
 │   ├── will.py              # Will extraction
 │   ├── bank_statement.py    # Bank statement extraction
-│   └── deed.py              # Deed extraction
+│   ├── deed.py              # Deed extraction
+│   └── creditor_notice.py   # Creditor-notice extraction
 └── prompts/
     └── extraction.py        # Per-document-type extraction prompts
 ```
@@ -46,9 +48,11 @@ Build this first; the whole team imports it. It should expose a small, stable su
 - a **streaming-chat** helper (used by Member 3's chat endpoint),
 - a place to plug in the agent tool-use loop (Member 3 owns the loop itself).
 
-Model guidance: use `claude-sonnet-4-6` for document parsing (vision + structured output,
-higher volume). Leave `claude-opus-4-8` for the agent/chat reasoning paths. Every call
-must run inside a Phoenix span — coordinate the span helper with Member 3.
+Model guidance: the service runs on `claude-sonnet-4-6` everywhere today —
+`agent/llm/claude.py` exposes `DOCUMENT_MODEL` (parsing) and `REASONING_MODEL`
+(agent/chat), both currently `claude-sonnet-4-6`; point `REASONING_MODEL` at
+`claude-opus-4-8` to give the reasoning paths the heavier model. Every call must run inside
+a Phoenix span — coordinate the span helper with Member 3.
 
 ### Embeddings (`agent/llm/embeddings.py`)
 A thin wrapper over OpenAI `text-embedding-3-small` that turns a list of chunks into a
@@ -113,8 +117,9 @@ you should pull:
       and a streaming-chat helper.
 - [ ] `agent/llm/embeddings.py` turns chunks into vectors via `text-embedding-3-small`.
 - [ ] `POST /parse-document` accepts a PDF, returns a validated extraction + any new alerts.
-- [ ] Will / bank / deed parsers each extract their key fields + meaningful `rawChunks`.
-- [ ] The router correctly identifies will, bank statement, and deed.
+- [ ] Will / bank / deed / creditor-notice parsers each extract their key fields +
+      meaningful `rawChunks`.
+- [ ] The router correctly identifies will, bank statement, deed, and creditor notice.
 - [ ] Every Claude output is Pydantic-validated before anything is written to Redis.
 
 ---

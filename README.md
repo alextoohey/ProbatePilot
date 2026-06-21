@@ -6,11 +6,25 @@
 
 Built for the Hackathon @ Berkeley 2026 (24-hour build).
 
+## The problem
+When someone dies, the **executor** — usually a grieving family member, not a lawyer — is
+personally responsible for administering the estate: probate filings, asset inventory,
+creditor notices, debts paid in the right legal order, taxes, and distributions. Miss a
+deadline or pay out of order and the executor can be held *personally* liable. Families who
+can't afford a probate attorney do this alone, spending ~180 hours and making expensive
+mistakes nobody warned them about.
+
+Executor AI is the expert in their corner: it reconstructs the estate from its documents
+and tells the executor the next action *before* it costs them. California probate only, and
+never a substitute for legal advice — for attorney-judgment questions it says so plainly.
+
 ## What it does
-Upload a will, deed, bank statement, or insurance policy. Claude parses each into a live
-estate-state graph. An estate-aware chat (text + voice) answers questions grounded in
-*your* documents. And a real agent — the **DeadlineAgent** — proactively reasons over
-California probate law and tells you the next action before a missed deadline costs you.
+Sign in, create an estate, and upload a will, deed, bank statement, or creditor notice.
+Claude parses each into a live estate-state graph. An estate-aware chat (text + voice)
+answers questions grounded in *your* documents. A real agent — the **DeadlineAgent** —
+proactively reasons over California probate law and tells you the next action before a
+missed deadline costs you, and a second **ResearchAgent** watches weekly for probate-law
+changes. Generated letters and emailed alert digests close the loop.
 
 ## Architecture
 Polyglot, two services + shared Redis. Python is the brain, TypeScript is the experience,
@@ -18,16 +32,19 @@ Redis is the memory.
 
 ```
 web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Python)
-  dashboard · chat UI · voice                     documents · RAG chat · DeadlineAgent
-  Deepgram · Sentry                               Claude · embeddings · Phoenix
+  auth · dashboard · chat · voice                 auth · documents · RAG chat
+  Deepgram · Sentry                               DeadlineAgent · ResearchAgent
+                                                  letters · email · Phoenix + evals
             └──────────────── Redis (KV state + vector search) ────────────────┘
 ```
 
 ## Stack
-- **agent/** — Python · FastAPI · Anthropic (`claude-opus-4-8`, `claude-sonnet-4-6`) ·
-  OpenAI embeddings · Pydantic · Phoenix tracing
+- **agent/** — Python · FastAPI · Anthropic (`claude-sonnet-4-6` across parsing, the
+  agents, chat, and letters) · OpenAI embeddings · Pydantic · bcrypt auth · Resend email
+  · Phoenix tracing + LLM-as-judge evals
 - **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
-- **shared** — Redis Cloud: KV estate state + Redis 8 Vector Sets for document retrieval
+- **shared** — Redis: KV estate state + vector search for document retrieval, behind a
+  store layer that supports Upstash (default cloud), Redis Cloud, or in-memory backends
 
 ## Repo layout
 - [`CLAUDE.md`](CLAUDE.md) — working instructions for Claude / coding agents
@@ -58,7 +75,10 @@ make seed
 ```
 
 Fill in your API keys in `agent/.env` and `web/.env.local` after running `make env`.
-Minimum to start: `ANTHROPIC_API_KEY` in `agent/.env`. Everything else runs on stubs.
+Minimum to start: `ANTHROPIC_API_KEY` in `agent/.env`. The store defaults to
+`STORE_BACKEND=memory`, so Redis/Upstash is optional for local dev; voice (Deepgram),
+email (Resend), and observability (Phoenix/Sentry) degrade gracefully when their keys are
+unset — voice and email return previews instead of failing.
 
 Phoenix tracing sends Anthropic, OpenAI embedding, and custom agent spans to
 `PHOENIX_COLLECTOR_ENDPOINT` (defaults to `http://localhost:6006/v1/traces`). Set

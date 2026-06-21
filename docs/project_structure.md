@@ -24,14 +24,19 @@ executor-ai/
 agent/
 ├── main.py                 # FastAPI route wiring and stable API surface
 ├── agents/                 # Member 3: DeadlineAgent entrypoints
+├── researcher/             # Member 3: weekly probate-law ResearchAgent
 ├── documents/              # Member 1: document router and per-type parsers
 ├── llm/                    # Member 1: Claude client and embeddings helpers
+├── auth/                   # bcrypt password hashing + cookie sessions
+├── notify/                 # Resend weekly recap / alert digest
 ├── observability/          # Member 3: Phoenix OTLP + OpenInference span helpers
+├── evals/                  # Member 3: LLM-as-judge DeadlineAgent eval
 ├── prompts/                # Members 1 and 3: extraction, chat, letter prompts
 ├── rules/                  # Member 3: California probate rule data/evaluators
-├── schemas/                # Member 2: Pydantic contracts
+├── schemas/                # Member 2: Pydantic contracts (estate, api, documents, auth)
 ├── seed/                   # Member 2: demo estate reset
-└── store/                  # Member 2: Redis boundary and in-memory fallback
+├── tests/                  # pytest suite (rules, agents, chat, letters, …)
+└── store/                  # Member 2: Redis boundary (memory / Upstash / Redis Cloud)
 ```
 
 ## Web App: `web/`
@@ -44,23 +49,21 @@ web/
 └── types/                  # Member 2: TypeScript contracts mirroring Pydantic
 ```
 
-## Placeholder Boundaries
+## Graceful-Degradation Boundaries
 
-The scaffold intentionally includes working placeholders so team members can build in
-parallel:
+The service is feature-complete, but every external dependency degrades gracefully so the
+app still boots and demos without a full set of credentials:
 
-- `agent/store/redis_client.py` can run in memory for offline work or use Redis Cloud for
-  KV plus Redis 8 Vector Sets for document retrieval.
-- `docs/database.md` defines the Redis KV/vector contract and the replacement checklist.
-- `docs/workstreams.md` gives each member a start-here map and stable dependencies.
-- `agent/llm/claude.py` and `agent/llm/embeddings.py` expose stable helper functions
-  without requiring API keys.
-- `agent/documents/` returns typed heuristic extractions so upload and merge flows can be
-  built before Claude parsing is finished.
-- `agent/agents/deadline_agent.py` returns deterministic alerts from the seed estate so
-  the dashboard can render the core demo immediately.
+- `agent/store/redis_client.py` runs in memory by default (`STORE_BACKEND=memory`) and
+  switches to Upstash or Redis Cloud when credentials are present.
+- `agent/llm/claude.py` and `agent/llm/embeddings.py` no-op into deterministic fallbacks
+  when `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are unset.
+- `agent/documents/` falls back to heuristic extraction when Claude is unavailable.
+- `agent/agents/deadline_agent.py` runs a Claude tool-use loop with a deterministic
+  fallback so the dashboard always has alerts.
+- `agent/notify/email.py` returns a preview instead of sending when `RESEND_API_KEY` is
+  unset.
 - `web/lib/mockEstate.ts` lets the dashboard render even if the Python service is down.
-- `web/app/api/voice/*` returns stub responses until Deepgram is wired.
+- `web/app/api/voice/*` returns previews until `DEEPGRAM_API_KEY` is set.
 
-Replace placeholders behind these boundaries without changing call signatures unless the
-owning members coordinate a contract update.
+Keep these call signatures stable unless the owning members coordinate a contract update.

@@ -1,14 +1,22 @@
 # Estate Backend Approach
 
-Do not implement this yet. This is the recommended backend shape for making newly
-created estates real, durable records instead of UI-local state.
+> **Status: largely implemented.** `POST /estates` now creates a real, durable
+> `EstateState` shell (with `county`, executor, etc.) and `GET /estate/{estate_id}`
+> reads it back; accounts/auth exist (`agent/auth/`), so estates are no longer purely
+> UI-local. Still open from the proposal below: a dedicated
+> `POST /estates/{estate_id}/documents` route (uploads still go through
+> `/parse-document` / `/parse-documents`), `PATCH /estates/{estate_id}`, and the
+> server-derived `setupStatus` / `missingRequiredFields[]` helpers.
 
-## Current Gap
+This is the recommended backend shape for making newly created estates real, durable
+records instead of UI-local state.
 
-The frontend can create an estate profile locally, but the agent service does not know
-about it until a document is uploaded. When the first upload arrives, the backend creates
-a blank estate state from the upload request and fills missing fields with placeholders
-like `Unknown Decedent`.
+## Original Gap (now addressed)
+
+Previously, the frontend could create an estate profile locally, but the agent service did
+not know about it until a document was uploaded — the first upload created a blank estate
+state and filled missing fields with placeholders like `Unknown Decedent`. `POST /estates`
+removes that implicit-creation behavior.
 
 That is fine for a prototype shell, but it creates confusing behavior:
 
