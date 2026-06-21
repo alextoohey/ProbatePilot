@@ -1,0 +1,176 @@
+/* ── Executor AI — Design tokens (ported from the design system) ──────────
+   Source of truth: claude.ai/design "Executor AI Design System" → tokens/.
+   Brought in verbatim as global CSS so components can use var(--token) exactly
+   as the prototype did. Fonts are loaded via the Google Fonts @import below. */
+
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* ── Typography ── */
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  --text-3xl: 38px;
+  --text-4xl: 48px;
+  --text-5xl: 60px;
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.08em;
+
+  --display-font: var(--font-display);
+  --heading-font: var(--font-display);
+  --body-font: var(--font-sans);
+  --label-font: var(--font-sans);
+  --code-font: var(--font-mono);
+
+  /* ── Warm paper neutrals (surfaces) ── */
+  --paper-0: #ffffff;
+  --paper-50: #fbfbf8;
+  --paper-100: #f7f7f4;
+  --paper-200: #f0efe9;
+  --paper-300: #e6e4db;
+  --paper-400: #d7d4c8;
+
+  /* ── Cool slate ink (text & lines) ── */
+  --ink-950: #11181c;
+  --ink-900: #1f2933;
+  --ink-700: #334155;
+  --ink-600: #475569;
+  --ink-500: #64748b;
+  --ink-400: #94a3b8;
+  --ink-300: #cbd5e1;
+  --ink-200: #e2e8f0;
+  --ink-100: #eef1f4;
+
+  /* ── Evergreen (brand / primary) ── */
+  --evergreen-950: #102219;
+  --evergreen-900: #163024;
+  --evergreen-800: #1d4030;
+  --evergreen-700: #245038;
+  --evergreen-600: #2e6647;
+  --evergreen-500: #3c8159;
+  --evergreen-400: #6ba883;
+  --evergreen-200: #c3ddcd;
+  --evergreen-100: #e3efe7;
+  --evergreen-50: #f1f7f3;
+
+  /* ── Semantic: critical / warning / info ── */
+  --red-700: #7f1d1d;
+  --red-500: #dc2626;
+  --red-border: #fca5a5;
+  --red-bg: #fef2f2;
+
+  --amber-700: #78350f;
+  --amber-500: #d97706;
+  --amber-border: #fcd34d;
+  --amber-bg: #fffbeb;
+
+  --sky-700: #0c4a6e;
+  --sky-500: #0284c7;
+  --sky-border: #7dd3fc;
+  --sky-bg: #f0f9ff;
+
+  /* ── Semantic aliases (use these in components) ── */
+  --bg-app: var(--paper-100);
+  --bg-raised: var(--paper-50);
+  --surface-card: var(--paper-0);
+  --surface-sunken: var(--paper-200);
+  --surface-tint: var(--evergreen-50);
+
+  --text-strong: var(--ink-950);
+  --text-body: var(--ink-900);
+  --text-muted: var(--ink-600);
+  --text-subtle: var(--ink-400);
+  --text-inverse: var(--paper-50);
+  --text-brand: var(--evergreen-700);
+  --text-link: var(--evergreen-700);
+
+  --border-subtle: var(--ink-200);
+  --border-default: var(--ink-300);
+  --border-strong: var(--ink-400);
+  --border-brand: var(--evergreen-700);
+
+  --action-primary: var(--evergreen-700);
+  --action-primary-hover: var(--evergreen-800);
+  --action-primary-active: var(--evergreen-900);
+  --focus-ring: var(--evergreen-500);
+
+  --critical-text: var(--red-700);
+  --critical-bg: var(--red-bg);
+  --critical-border: var(--red-border);
+  --critical-accent: var(--red-500);
+
+  --warning-text: var(--amber-700);
+  --warning-bg: var(--amber-bg);
+  --warning-border: var(--amber-border);
+  --warning-accent: var(--amber-500);
+
+  --info-text: var(--sky-700);
+  --info-bg: var(--sky-bg);
+  --info-border: var(--sky-border);
+  --info-accent: var(--sky-500);
+
+  --success-text: var(--evergreen-700);
+  --success-bg: var(--evergreen-50);
+  --success-border: var(--evergreen-200);
+  --success-accent: var(--evergreen-500);
+
+  /* ── Spacing & radii ── */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  --border-width: 1px;
+
+  --container-sm: 768px;
+  --container-md: 960px;
+  --container-lg: 1152px;
+
+  /* ── Elevation ── */
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px rgba(17, 24, 28, 0.04);
+  --shadow-sm: 0 1px 3px rgba(17, 24, 28, 0.06), 0 1px 2px rgba(17, 24, 28, 0.04);
+  --shadow-md: 0 4px 12px rgba(17, 24, 28, 0.06), 0 2px 4px rgba(17, 24, 28, 0.04);
+  --shadow-lg: 0 12px 28px rgba(17, 24, 28, 0.1), 0 4px 8px rgba(17, 24, 28, 0.05);
+  --shadow-focus: 0 0 0 3px rgba(60, 129, 89, 0.3);
+
+  --transition-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-base: 180ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-slow: 280ms cubic-bezier(0.2, 0, 0, 1);
+}
