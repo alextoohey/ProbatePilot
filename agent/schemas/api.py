@@ -92,6 +92,25 @@ class ChatSessionResponse(ContractModel):
     messages: list[ChatMessage] = Field(default_factory=list)
 
 
+class NotifyEmailRequest(ContractModel):
+    estateId: str = "demo-milligan"
+    recipientEmail: str | None = None
+    # "alerts" = current open alerts; "weekly" = the Monday recap.
+    kind: str = "alerts"
+
+
+class NotifyEmailResponse(ContractModel):
+    estateId: str
+    sent: bool
+    reason: str
+    recipient: str | None = None
+    alertCount: int = 0
+    # The composed email, returned so the UI can preview the exact message
+    # (and demonstrate a sample even when sending isn't configured).
+    subject: str = ""
+    body: str = ""
+
+
 class ChatSuggestionsRequest(ContractModel):
     estateId: str = "demo-milligan"
 

@@ -31,6 +31,8 @@ from prompts.letters import (
     normalize_letter_type,
 )
 from prompts.system import build_chat_prompt
+from notify.email import build_alert_digest, build_weekly_recap, email_configured, resolve_recipient, send_email
+from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, NotifyEmailRequest, NotifyEmailResponse, ParseDocumentResponse
 from schemas.api import (
     AnyDocumentExtraction,
     ChatHistoryResponse,
@@ -668,6 +670,67 @@ async def new_chat_session(estate_id: str) -> ChatSessionResponse:
     with span("route.chat_session_create", estate_id=estate_id, action_type="chat_session_create"):
         session = create_chat_session(estate_id)
         return ChatSessionResponse(estateId=estate_id, session=session, messages=[])
+
+
+def _suggestion_fallback(estate: EstateState) -> list[str]:
+    """Deterministic next-question suggestions when Claude is unavailable."""
+    out: list[str] = []
+    if estate.alerts:
+        out.append("What's the most urgent deadline?")
+    if estate.debts:
+        out.append("How much does the estate owe?")
+        unnotified = next((d for d in estate.debts if not d.notified), None)
+        if unnotified:
+            out.append(f"Do I need to notify {unnotified.creditor}?")
+    if estate.assets:
+        out.append("What is the estate worth right now?")
+    out.append("What should I do next?")
+    # De-dupe while preserving order.
+    return list(dict.fromkeys(out))
+
+
+@app.post("/chat-suggestions")
+async def chat_suggestions(request: ChatSuggestionsRequest) -> ChatSuggestionsResponse:
+    with span("route.chat_suggestions", estate_id=request.estateId, action_type="chat_suggestions"):
+        estate_state = get_estate_state(request.estateId)
+        history = [
+            {"role": m.get("role", ""), "content": m.get("content", "")}
+            for m in get_chat_history(request.estateId)
+        ]
+        suggestions = await suggest_followups(
+            estate_state.model_dump_json(),
+            history,
+            _suggestion_fallback(estate_state),
+        )
+        return ChatSuggestionsResponse(estateId=request.estateId, suggestions=suggestions[:3])
+
+
+@app.post("/notify/email")
+async def notify_email(request: NotifyEmailRequest) -> NotifyEmailResponse:
+    """Email the executor a digest of the estate's current deadline/liability alerts."""
+    with span("route.notify_email", estate_id=request.estateId, action_type="notify_email") as current_span:
+        estate_state = get_estate_state(request.estateId)
+        recipient = resolve_recipient((request.recipientEmail or estate_state.executor.email or "").strip())
+        # Fresh alerts straight from the DeadlineAgent — same source as the dashboard.
+        alerts = await run_deadline_agent(request.estateId)
+        if request.kind == "weekly":
+            subject, body = build_weekly_recap(estate_state, alerts)
+        else:
+            subject, body = build_alert_digest(estate_state, alerts)
+        result = send_email(recipient, subject, body)
+        set_span_attribute(current_span, "email_configured", email_configured())
+        set_span_attribute(current_span, "email_sent", bool(result.get("sent")))
+        set_span_attribute(current_span, "alert_count", len(alerts))
+        set_span_attribute(current_span, "email_kind", request.kind)
+        return NotifyEmailResponse(
+            estateId=request.estateId,
+            sent=bool(result.get("sent")),
+            reason=str(result.get("reason", "unknown")),
+            recipient=recipient or None,
+            alertCount=len(alerts),
+            subject=subject,
+            body=body,
+        )
 
 
 @app.post("/generate-letter")

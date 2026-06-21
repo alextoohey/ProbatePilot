@@ -91,6 +91,16 @@ export interface ChatSuggestionsResponse {
   suggestions: string[];
 }
 
+export interface NotifyEmailResponse {
+  estateId: string;
+  sent: boolean;
+  reason: string;
+  recipient?: string | null;
+  alertCount: number;
+  subject: string;
+  body: string;
+}
+
 export interface GenerateLetterRequest {
   estateId: string;
   letterType: string;

@@ -117,6 +117,16 @@ export const chatSuggestionsResponseSchema = z.object({
   suggestions: z.array(z.string()),
 }).strict();
 
+export const notifyEmailResponseSchema = z.object({
+  estateId: z.string(),
+  sent: z.boolean(),
+  reason: z.string(),
+  recipient: z.string().nullable().optional(),
+  alertCount: z.number().int(),
+  subject: z.string(),
+  body: z.string(),
+}).strict();
+
 export const estateResponseSchema = z.object({
   estate: estateStateSchema,
 }).strict();

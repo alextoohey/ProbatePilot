@@ -1,6 +1,7 @@
 import {
   chatHistoryResponseSchema,
   chatSuggestionsResponseSchema,
+  notifyEmailResponseSchema,
   chatRequestSchema,
   completeAlertRequestSchema,
   chatSessionResponseSchema,
@@ -27,6 +28,7 @@ import type {
   GenerateLetterResponse,
   LoginRequest,
   MeResponse,
+  NotifyEmailResponse,
   ParseDocumentResponse,
   ParseDocumentsResponse,
   PublicUser,
@@ -214,6 +216,20 @@ export async function createChatSession(estateId = DEFAULT_ESTATE_ID): Promise<{
   const payload = await response.json();
   const parsed = chatSessionResponseSchema.parse(payload);
   return { session: parsed.session, messages: parsed.messages };
+}
+
+export async function sendAlertEmail(
+  estateId = DEFAULT_ESTATE_ID,
+  recipientEmail?: string | null,
+  kind: "alerts" | "weekly" = "alerts",
+): Promise<NotifyEmailResponse> {
+  const response = await fetch("/api/agent/notify/email", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ estateId, recipientEmail, kind }),
+  });
+  const payload = await response.json();
+  return notifyEmailResponseSchema.parse(payload);
 }
 
 export async function openChatStream(request: ChatRequest): Promise<ReadableStream<Uint8Array> | null> {
