@@ -80,9 +80,25 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
         "deadline_agent.run",
         estate_id=estate_id,
         action_type="deadline_agent_run",
+        agent_name="DeadlineAgent",
+        route="/deadline-agent",
         rules_checked=len(CALIFORNIA_PROBATE_RULES),
         llm_model=REASONING_MODEL,
     ) as current_span:
+        if _capture_evaluation_context():
+            set_span_attribute(
+                current_span,
+                "deadline_agent.evaluation_context",
+                json.dumps(
+                    {
+                        "estateState": estate_summary(estate),
+                        "deterministicRuleAlerts": [
+                            alert.model_dump(mode="json") for alert in deterministic_alerts
+                        ],
+                    },
+                    sort_keys=True,
+                ),
+            )
         try:
             if not os.getenv("ANTHROPIC_API_KEY"):
                 raise MissingAnthropicKeyError("ANTHROPIC_API_KEY is not set.")
@@ -111,6 +127,15 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
         set_span_attribute(current_span, "fallback_used", fallback_used)
         set_span_attribute(current_span, "fallback_reason", fallback_reason)
         set_span_attribute(current_span, "claude_tool_calls", claude_tool_calls)
+        if _capture_evaluation_context():
+            set_span_attribute(
+                current_span,
+                "deadline_agent.evaluation_output",
+                json.dumps(
+                    {"alerts": [alert.model_dump(mode="json") for alert in final_alerts]},
+                    sort_keys=True,
+                ),
+            )
         return final_alerts
 
 
@@ -126,6 +151,15 @@ class ClaudeAgentResult:
     def __init__(self, alerts: list[Alert], tool_calls: int) -> None:
         self.alerts = alerts
         self.tool_calls = tool_calls
+
+
+def _capture_evaluation_context() -> bool:
+    return os.getenv("PHOENIX_CAPTURE_EVAL_CONTEXT", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 async def _run_claude_tool_loop(estate: EstateState, deterministic_alerts: list[Alert]) -> ClaudeAgentResult:

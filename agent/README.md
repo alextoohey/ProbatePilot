@@ -37,5 +37,31 @@ PHOENIX_API_KEY=  # required only when the Phoenix endpoint requires authenticat
 ```
 
 The example environment hides estate inputs, outputs, and message content by default.
+The collector setting accepts either a Phoenix base URL or a full `/v1/traces` URL.
 After starting the service, `GET /health` reports whether Phoenix and both SDK
 instrumentors initialized successfully.
+
+### DeadlineAgent quality evaluator
+
+To capture the evidence needed to judge DeadlineAgent outputs, opt in and restart the
+agent:
+
+```bash
+PHOENIX_CAPTURE_EVAL_CONTEXT=true
+PHOENIX_EVAL_PROVIDER=anthropic
+PHOENIX_EVAL_MODEL=claude-sonnet-4-6
+```
+
+Run `/deadline-agent` at least once, then evaluate captured spans and write the 1-5 score
+plus explanation back to Phoenix:
+
+```bash
+make eval-deadline
+# or
+uv run python -m evals.deadline_next_steps_quality --limit 500
+```
+
+Only spans named `deadline_agent.run` with matching DeadlineAgent metadata and evaluation
+payloads are selected. Use `--hours 24` to limit the time window or `--no-log` to preview
+scores without creating Phoenix annotations. Evaluation snapshots contain estate facts;
+leave `PHOENIX_CAPTURE_EVAL_CONTEXT=false` when continuous evaluation is not required.

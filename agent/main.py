@@ -19,7 +19,7 @@ from agents.deadline_agent import mark_alert_complete, run_deadline_agent
 from auth.security import hash_password, new_session_token, verify_password
 from documents.pdf_reader import extract_text
 from documents.router import parse_document_text_with_type as parse_document_text
-from llm.claude import DocumentParseError, generate_letter_draft, stream_chat
+from llm.claude import DocumentParseError, generate_letter_draft, stream_chat, suggest_followups
 from llm.embeddings import embed_query, embed_texts
 from observability.phoenix import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
 from prompts.letters import (

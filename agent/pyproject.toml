@@ -14,6 +14,8 @@ dependencies = [
 
     # Observability
     "arize-phoenix-otel",
+    "arize-phoenix-client",
+    "arize-phoenix-evals",
     "openinference-instrumentation-anthropic>=0.1.0",
     "openinference-instrumentation-openai>=0.1.0",
     "opentelemetry-sdk>=1.42.1",

@@ -46,12 +46,12 @@ def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) 
     monkeypatch.setattr(phoenix, "phoenix_register", fake_register)
     monkeypatch.setattr(phoenix, "AnthropicInstrumentor", FakeInstrumentor)
     monkeypatch.setattr(phoenix, "OpenAIInstrumentor", FakeInstrumentor)
-    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:6006/v1/traces")
+    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "https://app.phoenix.arize.com/s/test-space")
     monkeypatch.setenv("PHOENIX_PROJECT_NAME", "executor-ai-test")
 
     phoenix.init_tracing()
 
-    assert register_args["endpoint"] == "http://phoenix:6006/v1/traces"
+    assert register_args["endpoint"] == "https://app.phoenix.arize.com/s/test-space/v1/traces"
     assert register_args["project_name"] == "executor-ai-test"
     assert register_args["protocol"] == "http/protobuf"
     assert register_args["tracer_name"] == "executor-ai.agent"
@@ -93,6 +93,7 @@ def test_deadline_agent_fallback_attributes_can_be_set(monkeypatch) -> None:
         yield current_span
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PHOENIX_CAPTURE_EVAL_CONTEXT", "true")
     monkeypatch.setattr(deadline_agent, "span", fake_span)
     seed_demo_estate()
 
@@ -102,6 +103,8 @@ def test_deadline_agent_fallback_attributes_can_be_set(monkeypatch) -> None:
     assert captured[-1].attributes["fallback_reason"] == "missing_anthropic_api_key"
     assert captured[-1].attributes["claude_tool_calls"] == 0
     assert captured[-1].attributes["alerts_fired"] >= 2
+    assert "estateState" in str(captured[-1].attributes["deadline_agent.evaluation_context"])
+    assert "alerts" in str(captured[-1].attributes["deadline_agent.evaluation_output"])
 
 
 def test_chat_still_streams_when_retrieval_fails(monkeypatch) -> None:

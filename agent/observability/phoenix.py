@@ -155,7 +155,10 @@ def _safe_attribute_value(value: object) -> object:
 
 
 def _collector_endpoint() -> str:
-    return os.getenv("PHOENIX_COLLECTOR_ENDPOINT", DEFAULT_PHOENIX_COLLECTOR_ENDPOINT)
+    endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", DEFAULT_PHOENIX_COLLECTOR_ENDPOINT).rstrip("/")
+    if endpoint.endswith("/v1/traces"):
+        return endpoint
+    return f"{endpoint}/v1/traces"
 
 
 def _project_name() -> str:

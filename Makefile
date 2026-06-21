@@ -1,7 +1,7 @@
 # ClearPath Estate — Dev Commands
 # Run from the repo root.
 
-.PHONY: install install-agent install-web dev dev-agent dev-web seed test test-agent test-web-contracts typecheck lint help
+.PHONY: install install-agent install-web dev dev-agent dev-web seed eval-deadline test test-agent test-web-contracts typecheck lint help
 
 # ── Setup ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,9 @@ dev-web:  ## Start the Next.js frontend only (port 3000)
 
 seed:  ## Reset the demo estate to a known-good state (agent must be running)
 	curl -s -X POST http://localhost:8000/seed | python3 -m json.tool
+
+eval-deadline:  ## Score captured DeadlineAgent traces and log annotations to Phoenix
+	cd agent && uv run python -m evals.deadline_next_steps_quality
 
 health:  ## Check the agent is up
 	curl -s http://localhost:8000/health
