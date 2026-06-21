@@ -11,6 +11,7 @@ async def parse_will(text: str) -> WillExtraction:
         prompt=WILL_EXTRACTION_PROMPT,
         content=text,
         response_model=WillExtraction,
+        allow_fallback=False,
         fallback={
             "documentType": "will",
             "confidence": 0.55,

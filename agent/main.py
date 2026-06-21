@@ -14,13 +14,13 @@ from fastapi.responses import StreamingResponse
 from agents.deadline_agent import run_deadline_agent
 from documents.pdf_reader import extract_text
 from documents.router import parse_document_text
-from llm.claude import stream_chat
+from llm.claude import DocumentParseError, stream_chat
 from llm.embeddings import embed_query, embed_texts
 from observability.phoenix import span
 from prompts.letters import LETTER_PROMPTS
 from prompts.system import build_chat_prompt
 from schemas.api import AnyDocumentExtraction, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
-from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
+from schemas.documents import BankStatementExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
 from schemas.estate import Asset, UploadedDocument
 from store.redis_client import (
     add_document,
@@ -124,8 +124,26 @@ async def parse_document(
     if not text.strip():
         raise HTTPException(status_code=422, detail="Could not extract any text from the uploaded file.")
 
-    with span("document_parse", estate_id=estateId, filename=filename, action="document_parse"):
-        extraction = await parse_document_text(text)
+    try:
+        with span("document_parse", estate_id=estateId, filename=filename, action="document_parse"):
+            extraction = await parse_document_text(text)
+    except DocumentParseError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't parse this required document. Please reupload a clearer PDF, "
+                "image, or text file, or enter the information manually."
+            ),
+        ) from exc
+
+    if isinstance(extraction, UnknownDocumentExtraction):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't identify this document. Please reupload a clearer file or "
+                "enter the information manually."
+            ),
+        )
 
     _merge_extraction(estateId, extraction)
 
