@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from .documents import BankStatementExtraction, CreditorNoticeExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
@@ -46,6 +48,16 @@ class ParseDocumentsResponse(ContractModel):
 
 class DeadlineAgentRequest(ContractModel):
     estateId: str = "demo-milligan"
+
+
+class ResearchAgentRequest(ContractModel):
+    estateId: str = "demo-milligan"
+    force: bool = False
+
+
+class ResearchAgentResponse(ContractModel):
+    estateId: str
+    result: dict[str, Any]
 
 
 class CompleteAlertRequest(ContractModel):

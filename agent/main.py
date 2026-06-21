@@ -31,6 +31,7 @@ from prompts.letters import (
     normalize_letter_type,
 )
 from prompts.system import build_chat_prompt
+from researcher.research_agent import run_research_agent
 from notify.email import build_alert_digest, build_weekly_recap, email_configured, resolve_recipient, send_email
 from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, ChatSessionResponse, ChatSessionsResponse, ChatSuggestionsRequest, ChatSuggestionsResponse, DeadlineAgentRequest, GenerateLetterRequest, NotifyEmailRequest, NotifyEmailResponse, ParseDocumentResponse
 from schemas.api import (
@@ -46,6 +47,8 @@ from schemas.api import (
     ParseDocumentFailure,
     ParseDocumentResponse,
     ParseDocumentsResponse,
+    ResearchAgentRequest,
+    ResearchAgentResponse,
     SaveLetterRequest,
 )
 from schemas.auth import AuthResponse, CreateEstateRequest, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
@@ -247,6 +250,13 @@ async def deadline_agent(request: DeadlineAgentRequest) -> dict[str, object]:
     with span("route.deadline_agent", estate_id=request.estateId, action_type="deadline_agent_run"):
         alerts = await run_deadline_agent(request.estateId)
         return {"estateId": request.estateId, "alerts": alerts}
+
+
+@app.post("/research-agent", response_model=ResearchAgentResponse)
+async def research_agent(request: ResearchAgentRequest) -> ResearchAgentResponse:
+    with span("route.research_agent", estate_id=request.estateId, action_type="research_agent_run"):
+        result = await run_research_agent(request.estateId, force=request.force)
+        return ResearchAgentResponse(estateId=request.estateId, result=result.model_dump(mode="json"))
 
 
 @app.post("/complete-alert", response_model=EstateResponse)
