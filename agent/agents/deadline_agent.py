@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from llm.claude import REASONING_MODEL, create_reasoning_message
-from observability.arize import set_span_attribute, set_span_error, span
+from observability.phoenix import set_span_attribute, set_span_error, span
 from pydantic import ValidationError
 from rules.california_probate import CALIFORNIA_PROBATE_RULES, RULES_BY_ID, alert_sort_key, derive_alert_timing_status, evaluate_rules
 from schemas.estate import Alert, EstateState, Task

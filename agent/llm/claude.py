@@ -8,7 +8,7 @@ import re
 from typing import Any, TypeVar
 
 import anthropic
-from observability.arize import set_span_attribute, set_span_error, span
+from observability.phoenix import set_span_attribute, set_span_error, span
 from pydantic import BaseModel
 
 

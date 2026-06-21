@@ -23,4 +23,19 @@ uv run uvicorn main:app --reload --port 8000
 ```
 
 The current store and AI helpers include in-memory/offline placeholders. Add real Redis,
-Claude, embeddings, and Arize AX tracing behavior behind the existing module functions.
+Claude, embeddings, and Phoenix tracing behavior behind the existing module functions.
+
+## Phoenix tracing
+
+The service sends Anthropic, OpenAI embedding, and custom workflow spans to Phoenix.
+Start a Phoenix server on `http://localhost:6006`, or configure Phoenix Cloud in `.env`:
+
+```bash
+PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+PHOENIX_PROJECT_NAME=executor-ai-agent
+PHOENIX_API_KEY=  # required only when the Phoenix endpoint requires authentication
+```
+
+The example environment hides estate inputs, outputs, and message content by default.
+After starting the service, `GET /health` reports whether Phoenix and both SDK
+instrumentors initialized successfully.

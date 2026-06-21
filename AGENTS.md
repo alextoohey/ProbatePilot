@@ -24,7 +24,7 @@ language for what it is best at; do not collapse everything into one stack.
 │  • Deepgram voice       │ ◀────── │  • RAG chat (streaming)      │
 │  • Sentry observability │         │  • DeadlineAgent (tool-use)  │
 └───────────┬─────────────┘         │  • Letter generation         │
-            │                       │  • Arize AX tracing          │
+            │                       │  • Phoenix tracing          │
             │                       └──────────────┬──────────────┘
             │        Redis (KV estate state + vector search)        │
             └───────────────────────┬──────────────────────────────┘
@@ -48,8 +48,8 @@ language for what it is best at; do not collapse everything into one stack.
   - `claude-sonnet-4-6` — document parsing (vision + structured) + letter drafting
 - **Embeddings**: OpenAI `text-embedding-3-small` (`openai`)
 - **Validation**: Pydantic v2 for all Claude structured outputs and API schemas
-- **Observability**: Arize AX tracing (`arize.otel.register` + OpenInference) — traces
-  every Claude call and the full agent loop
+- **Observability**: Phoenix tracing (`phoenix.otel.register` + OpenInference) — traces
+  Anthropic, OpenAI embeddings, and the full agent loop
 - **Dates**: `python-dateutil` / stdlib `datetime` for all deadline arithmetic
 - **Documents**: `pypdf` / `pdfplumber` for text, Claude vision for scans/images
 
@@ -80,7 +80,7 @@ language for what it is best at; do not collapse everything into one stack.
 | DeadlineAgent (tool-use loop) | `agent/agents/deadline_agent.py` |
 | CA probate rules | `agent/rules/california_probate.py` |
 | Prompts | `agent/prompts/` |
-| Arize AX setup | `agent/observability/arize.py` |
+| Phoenix setup | `agent/observability/phoenix.py` |
 | Demo seed data | `agent/seed/demo_estate.py` |
 
 ### TypeScript (`web/`)
@@ -147,10 +147,9 @@ UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 UPSTASH_VECTOR_REST_URL=
 UPSTASH_VECTOR_REST_TOKEN=
-ARIZE_SPACE_ID=
-ARIZE_API_KEY=
-ARIZE_PROJECT_NAME=clearpath-estate-agent
-ARIZE_COLLECTOR_ENDPOINT=https://otlp.arize.com/v1/traces
+PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+PHOENIX_PROJECT_NAME=executor-ai-agent
+PHOENIX_API_KEY=
 
 # web/.env.local  (Next.js — never commit)
 AGENT_API_URL=http://localhost:8000
@@ -178,7 +177,7 @@ Full seed object: [project_overview.md](project_overview.md#demo-scenario).
 
 ## Critical Rules
 - **Never commit `agent/.env` or `web/.env.local`.**
-- Every Claude call is traced. In Python that means it runs inside an Arize AX
+- Every Claude and OpenAI embedding call is traced. In Python that means it runs inside a Phoenix
   span tagged with `estate_id` and `action_type`. In the web layer, wrap the proxy call
   in a Sentry span.
 - Validate **every** Claude structured output (Pydantic in `agent/`) before writing to
@@ -198,6 +197,6 @@ Full seed object: [project_overview.md](project_overview.md#demo-scenario).
 - **Member 2** — Data & Contracts (Python + TS): Redis, Pydantic/Zod/TS schemas, estate
   state, seed data → [team/member2-data-layer.md](team/member2-data-layer.md)
 - **Member 3** — DeadlineAgent + Reasoning (Python): agent loop, rules engine, chat RAG,
-  letters, Arize → [team/member3-deadline-agent.md](team/member3-deadline-agent.md)
+  letters, Phoenix → [team/member3-deadline-agent.md](team/member3-deadline-agent.md)
 - **Member 4** — Frontend + Voice (TS): all UI, Deepgram, Sentry, BFF proxy
   → [team/member4-frontend-chat-voice.md](team/member4-frontend-chat-voice.md)

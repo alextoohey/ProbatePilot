@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from agents import deadline_agent
 from agents.deadline_agent import run_deadline_agent
 import main
-from observability import arize
+from observability import phoenix
 from store.redis_client import seed_demo_estate
 
 
@@ -23,21 +23,57 @@ class CapturedSpan:
         self.attributes["recorded_exception"] = exc.__class__.__name__
 
 
-def test_span_noop_mode_yields_span_like_object(monkeypatch) -> None:
-    monkeypatch.setattr(arize, "_INITIALIZED", True)
-    monkeypatch.setattr(arize, "_TRACING_ENABLED", False)
-    monkeypatch.setattr(arize, "_TRACER", None)
+def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) -> None:
+    register_args: dict[str, object] = {}
+    instrumentation_calls: list[object] = []
 
-    with arize.span("test.noop") as current_span:
+    class FakeProvider:
+        def get_tracer(self, name: str) -> object:
+            register_args["tracer_name"] = name
+            return object()
+
+    class FakeInstrumentor:
+        def instrument(self, **kwargs: object) -> None:
+            instrumentation_calls.append(kwargs["tracer_provider"])
+
+    def fake_register(**kwargs: object) -> FakeProvider:
+        register_args.update(kwargs)
+        return FakeProvider()
+
+    monkeypatch.setattr(phoenix, "_INITIALIZED", False)
+    monkeypatch.setattr(phoenix, "_TRACING_ENABLED", False)
+    monkeypatch.setattr(phoenix, "_TRACER", None)
+    monkeypatch.setattr(phoenix, "phoenix_register", fake_register)
+    monkeypatch.setattr(phoenix, "AnthropicInstrumentor", FakeInstrumentor)
+    monkeypatch.setattr(phoenix, "OpenAIInstrumentor", FakeInstrumentor)
+    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:6006/v1/traces")
+    monkeypatch.setenv("PHOENIX_PROJECT_NAME", "executor-ai-test")
+
+    phoenix.init_tracing()
+
+    assert register_args["endpoint"] == "http://phoenix:6006/v1/traces"
+    assert register_args["project_name"] == "executor-ai-test"
+    assert register_args["protocol"] == "http/protobuf"
+    assert register_args["tracer_name"] == "executor-ai.agent"
+    assert len(instrumentation_calls) == 2
+    assert phoenix.get_tracing_status()["provider"] == "phoenix"
+
+
+def test_span_noop_mode_yields_span_like_object(monkeypatch) -> None:
+    monkeypatch.setattr(phoenix, "_INITIALIZED", True)
+    monkeypatch.setattr(phoenix, "_TRACING_ENABLED", False)
+    monkeypatch.setattr(phoenix, "_TRACER", None)
+
+    with phoenix.span("test.noop") as current_span:
         current_span.set_attribute("demo", "ok")
         current_span.record_exception(RuntimeError("ignored"))
 
 
 def test_deadline_agent_fallback_works_when_tracing_disabled(monkeypatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr(arize, "_INITIALIZED", True)
-    monkeypatch.setattr(arize, "_TRACING_ENABLED", False)
-    monkeypatch.setattr(arize, "_TRACER", None)
+    monkeypatch.setattr(phoenix, "_INITIALIZED", True)
+    monkeypatch.setattr(phoenix, "_TRACING_ENABLED", False)
+    monkeypatch.setattr(phoenix, "_TRACER", None)
     seed_demo_estate()
 
     alerts = asyncio.run(run_deadline_agent("demo-milligan"))

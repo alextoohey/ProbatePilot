@@ -5,7 +5,7 @@ import logging
 import os
 
 import openai
-from observability.arize import set_span_attribute, set_span_error, span
+from observability.phoenix import set_span_attribute, set_span_error, span
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 VECTOR_SIZE = 1536

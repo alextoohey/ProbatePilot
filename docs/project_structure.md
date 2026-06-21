@@ -26,7 +26,7 @@ agent/
 ├── agents/                 # Member 3: DeadlineAgent entrypoints
 ├── documents/              # Member 1: document router and per-type parsers
 ├── llm/                    # Member 1: Claude client and embeddings helpers
-├── observability/          # Member 3: Arize AX span helpers + Phoenix shim
+├── observability/          # Member 3: Phoenix OTLP + OpenInference span helpers
 ├── prompts/                # Members 1 and 3: extraction, chat, letter prompts
 ├── rules/                  # Member 3: California probate rule data/evaluators
 ├── schemas/                # Member 2: Pydantic contracts

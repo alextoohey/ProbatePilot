@@ -4,7 +4,7 @@
 **Language**: Python (`agent/`)
 **Track dependency**: The DeadlineAgent is the product moat — the thing that makes
 ClearPath an agent, not a chatbot. Your alerts are the hero of the demo. You also own the
-RAG chat endpoint and the Arize tracing that wins the observability prize.
+RAG chat endpoint and the Phoenix tracing used to inspect and evaluate the agent.
 
 ---
 
@@ -12,7 +12,7 @@ RAG chat endpoint and the Arize tracing that wins the observability prize.
 You own the proactive intelligence layer. The DeadlineAgent reads estate state, reasons
 over California probate rules and liability triggers, and fires ranked alerts before the
 executor makes an expensive mistake. You also own the **RAG chat endpoint** (the
-conversational counterpart to the agent), **letter generation**, and **Arize AX**
+conversational counterpart to the agent), **letter generation**, and **Phoenix**
 tracing across the whole Python service.
 
 This is the most reasoning-heavy role. Lean on `claude-opus-4-8` and adaptive thinking.
@@ -30,8 +30,7 @@ agent/
 │   ├── system.py             # Base chat system prompt (assembled per request)
 │   └── letters.py            # Letter-generation prompts (5+ letter types)
 └── observability/
-    ├── arize.py              # Arize AX / OpenInference setup + span helper
-    └── phoenix.py            # Compatibility shim for older imports
+    └── phoenix.py            # Phoenix OTLP / OpenInference setup + span helper
 ```
 Plus the routes in `agent/main.py`: `POST /deadline-agent`, `POST /chat` (SSE),
 `POST /generate-letter`.
@@ -40,9 +39,9 @@ Plus the routes in `agent/main.py`: `POST /deadline-agent`, `POST /chat` (SSE),
 
 ## How To Approach It
 
-### Arize AX first (~30 min, `agent/observability/arize.py`)
-Stand this up before anything else — it's cheap and it wins a prize. Initialize Arize AX /
-OpenInference so Anthropic calls are auto-instrumented, and expose a small span helper the
+### Phoenix first (~30 min, `agent/observability/phoenix.py`)
+Stand this up before anything else. Initialize Phoenix / OpenInference so Anthropic and
+OpenAI calls are auto-instrumented, and expose a small span helper the
 whole team wraps Claude calls in. Standard attributes across all spans:
 `estate_id`, `action_type` (`document_parse` | `chat_query` | `deadline_agent_run` |
 `letter_generation`), plus `doc_type`, `rule_checked`, `alerts_fired` where relevant.
@@ -68,7 +67,7 @@ severity, deduplicating against existing alerts, and (crucially) reasoning about
 **cross-rule consequences** (e.g. "no appraisal blocks the DE-160 filing," "distributing
 before creditor notification creates personal liability"). Use `claude-opus-4-8` with
 adaptive thinking. Output a ranked `Alert[]` (critical first), write it back through
-Member 2's helper, and record `rules_checked` / `alerts_fired` on the Arize span.
+Member 2's helper, and record `rules_checked` / `alerts_fired` on the Phoenix span.
 
 On fresh demo seed data it must produce the two CRITICAL alerts (DE-160 and creditor
 notification). The SDK's tool-runner handles the loop mechanics; you own the tool design
@@ -81,7 +80,7 @@ system prompt (`agent/prompts/system.py`,
 [project_overview.md §8](../project_overview.md#8-system-prompt-template)). **Prompt-cache**
 the stable prefix (base instructions + estate state) so repeated turns are cheap. Stream
 Claude's response back as Server-Sent Events for the web layer to consume. Wrap in an
-Arize span `action=chat_query`.
+Phoenix span `action=chat_query`.
 
 ### Letters (`POST /generate-letter`, `agent/prompts/letters.py`)
 5+ letter types (creditor notice, bank notification, IRS EIN request, beneficiary update,
@@ -100,14 +99,14 @@ sign-ready letter. Use `claude-sonnet-4-6`. Cite the relevant statute where appr
 
 | Others need from you | What |
 |----------------------|------|
-| **Member 1** | The Arize span helper; the DeadlineAgent entrypoint to call after a parse |
+| **Member 1** | The Phoenix span helper; the DeadlineAgent entrypoint to call after a parse |
 | **Member 4** | `POST /deadline-agent` (alerts), `POST /chat` (SSE), `POST /generate-letter` |
-| **Everyone** | Arize AX wired up so all Claude calls are traced |
+| **Everyone** | Phoenix wired up so all Claude and OpenAI calls are traced |
 
 ---
 
 ## Acceptance Criteria
-- [ ] Arize AX initialized; a span helper the whole team uses; spans carry `estate_id` +
+- [ ] Phoenix initialized; a span helper the whole team uses; spans carry `estate_id` +
       `action_type`.
 - [ ] All 11 CA probate rules implemented as declarative rule data.
 - [ ] The DeadlineAgent is a Claude tool-use loop (not a hand-rolled for-loop) and returns
@@ -123,8 +122,8 @@ sign-ready letter. Use `claude-sonnet-4-6`. Cite the relevant statute where appr
 ## Sponsor Hooks You Unlock
 - **Anthropic** — the DeadlineAgent is Claude doing proactive, multi-step reasoning, not
   Q&A. It is the core demo moment and the strongest argument for the prize.
-- **Arize** — your Arize AX setup traces every call across the service. In the demo, show
-  the Arize dashboard with the agent loop, token counts, and `alerts_fired` — and ideally
+- **Phoenix** — your Phoenix setup traces every call across the service. In the demo, show
+  the Phoenix dashboard with the agent loop, token counts, and `alerts_fired` — and ideally
   a moment where a trace caught a bad extraction or slow tool call and you fixed it.
 - **Redis** — every chat turn runs a real vector search; the agent reads estate memory
   from Redis on every run.

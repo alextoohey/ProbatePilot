@@ -48,7 +48,7 @@ Build this first; the whole team imports it. It should expose a small, stable su
 
 Model guidance: use `claude-sonnet-4-6` for document parsing (vision + structured output,
 higher volume). Leave `claude-opus-4-8` for the agent/chat reasoning paths. Every call
-must run inside an Arize AX span — coordinate the span helper with Member 3.
+must run inside a Phoenix span — coordinate the span helper with Member 3.
 
 ### Embeddings (`agent/llm/embeddings.py`)
 A thin wrapper over OpenAI `text-embedding-3-small` that turns a list of chunks into a
@@ -76,7 +76,7 @@ Accept a multipart file upload, then:
 5. Trigger the DeadlineAgent to re-evaluate (Member 3's entrypoint).
 6. Return `{ extraction, alerts }`.
 
-Wrap the Claude call(s) in an Arize span tagged `action=document_parse` and `doc_type`.
+Wrap the Claude call(s) in a Phoenix span tagged `action=document_parse` and `doc_type`.
 
 ---
 
@@ -98,7 +98,7 @@ you should pull:
 | You need from… | What |
 |----------------|------|
 | **Member 2** | Pydantic extraction models (`agent/schemas/`); Redis `upsert_vectors` and `merge_estate_state` helpers |
-| **Member 3** | The Arize span helper to wrap Claude calls; the DeadlineAgent entrypoint to call after a parse |
+| **Member 3** | The Phoenix span helper to wrap Claude calls; the DeadlineAgent entrypoint to call after a parse |
 
 | Others need from you | What |
 |----------------------|------|
@@ -122,5 +122,5 @@ you should pull:
 ## Sponsor Hooks You Unlock
 - **Anthropic** — Claude doing hard vision + structured extraction on real documents.
 - **Redis** — your chunks power vector search; keep them meaningful, per-`estateId`.
-- **Arize** — your parse calls are the first traced spans; a bad extraction should be
-  visible in Arize and drive a prompt fix during the build.
+- **Phoenix** — your parse calls are the first traced spans; a bad extraction should be
+  visible in Phoenix and drive a prompt fix during the build.

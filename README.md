@@ -19,13 +19,13 @@ Redis is the memory.
 ```
 web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Python)
   dashboard · chat UI · voice                     documents · RAG chat · DeadlineAgent
-  Deepgram · Sentry                               Claude · embeddings · Arize AX
+  Deepgram · Sentry                               Claude · embeddings · Phoenix
             └──────────────── Redis (KV state + vector search) ────────────────┘
 ```
 
 ## Stack
 - **agent/** — Python · FastAPI · Anthropic (`claude-opus-4-8`, `claude-sonnet-4-6`) ·
-  OpenAI embeddings · Pydantic · Arize AX tracing
+  OpenAI embeddings · Pydantic · Phoenix tracing
 - **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
 - **shared** — Redis Cloud: KV estate state + Redis 8 Vector Sets for document retrieval
 
@@ -59,6 +59,10 @@ make seed
 
 Fill in your API keys in `agent/.env` and `web/.env.local` after running `make env`.
 Minimum to start: `ANTHROPIC_API_KEY` in `agent/.env`. Everything else runs on stubs.
+
+Phoenix tracing sends Anthropic, OpenAI embedding, and custom agent spans to
+`PHOENIX_COLLECTOR_ENDPOINT` (defaults to `http://localhost:6006/v1/traces`). Set
+`PHOENIX_API_KEY` when using Phoenix Cloud; local Phoenix does not require one.
 
 ## Team
 | Member | Owns | Brief |

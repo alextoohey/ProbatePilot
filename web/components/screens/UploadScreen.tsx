@@ -115,7 +115,7 @@ function checklistIdForDocumentType(documentType: string): string | null {
 
 function parseProgressLabel(progress: number) {
   if (progress >= 100) return "Document parsed";
-  if (progress >= 78) return "Updating the estate graph";
+  if (progress >= 78) return "Updating the estate profile";
   if (progress >= 48) return "Extracting assets, debts, and people";
   if (progress >= 20) return "Reading pages and classifying the document";
   return "Uploading securely";

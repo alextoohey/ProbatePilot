@@ -6,7 +6,7 @@ import os
 import re
 
 from llm.claude import DOCUMENT_MODEL, get_async_client, get_client
-from observability.arize import set_span_attribute, span
+from observability.phoenix import set_span_attribute, span
 from prompts.extraction import TYPE_DETECTION_PROMPT
 from schemas.documents import DocumentExtraction, UnknownDocumentExtraction
 

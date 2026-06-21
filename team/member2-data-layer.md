@@ -134,5 +134,5 @@ is wired correctly before everyone depends on it.
 - **Redis** — your module *is* the Redis story: vector search as agent memory + retrieval,
   scoped per `estateId`, not caching. Make search return text **and** metadata
   (score/source) so the chat can cite documents.
-- **Anthropic / Arize** — airtight Pydantic validation means Claude outputs are typed and
+- **Anthropic / Phoenix** — airtight Pydantic validation means Claude outputs are typed and
   trustworthy before they ever reach Redis; bad outputs fail loudly and show up in traces.

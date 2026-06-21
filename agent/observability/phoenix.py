@@ -12,10 +12,10 @@ _INITIALIZED = False
 _TRACING_ENABLED = False
 _TRACER: Any | None = None
 _ANTHROPIC_INSTRUMENTED = False
+_OPENAI_INSTRUMENTED = False
 
-DEFAULT_ARIZE_COLLECTOR_ENDPOINT = "https://otlp.arize.com/v1/traces"
-DEFAULT_ARIZE_PROJECT_NAME = "clearpath-estate-agent"
-DEFAULT_SERVICE_NAME = "clearpath-estate-agent"
+DEFAULT_PHOENIX_COLLECTOR_ENDPOINT = "http://localhost:6006/v1/traces"
+DEFAULT_PHOENIX_PROJECT_NAME = "executor-ai-agent"
 
 
 class _NoopSpan:
@@ -27,9 +27,9 @@ class _NoopSpan:
 
 
 try:
-    from opentelemetry.sdk.resources import Resource
+    from phoenix.otel import register as phoenix_register
 except ImportError:  # pragma: no cover - optional local dependency
-    Resource = None
+    phoenix_register = None
 
 try:
     from openinference.instrumentation.anthropic import AnthropicInstrumentor
@@ -37,11 +37,9 @@ except ImportError:  # pragma: no cover - optional local dependency
     AnthropicInstrumentor = None
 
 try:
-    from arize.otel import register as arize_register
-    from arize.otel import set_routing_context as arize_set_routing_context
+    from openinference.instrumentation.openai import OpenAIInstrumentor
 except ImportError:  # pragma: no cover - optional local dependency
-    arize_register = None
-    arize_set_routing_context = None
+    OpenAIInstrumentor = None
 
 
 def get_tracing_status() -> dict[str, object]:
@@ -49,83 +47,68 @@ def get_tracing_status() -> dict[str, object]:
         "initialized": _INITIALIZED,
         "enabled": _TRACING_ENABLED,
         "anthropicInstrumented": _ANTHROPIC_INSTRUMENTED,
+        "openaiInstrumented": _OPENAI_INSTRUMENTED,
         "collectorEndpoint": _collector_endpoint(),
         "projectName": _project_name(),
-        "spaceIdConfigured": bool(os.getenv("ARIZE_SPACE_ID")),
-        "provider": "arize_ax",
+        "apiKeyConfigured": bool(os.getenv("PHOENIX_API_KEY")),
+        "provider": "phoenix",
     }
 
 
 def init_tracing() -> None:
-    """Initialize Arize AX tracing when configured."""
-    global _INITIALIZED, _TRACING_ENABLED, _TRACER, _ANTHROPIC_INSTRUMENTED
+    """Initialize Phoenix tracing and instrument the app's LLM SDKs."""
+    global _INITIALIZED, _TRACING_ENABLED, _TRACER
+    global _ANTHROPIC_INSTRUMENTED, _OPENAI_INSTRUMENTED
     if _INITIALIZED:
         return
 
     _INITIALIZED = True
-
-    if Resource is None or arize_register is None:
-        LOGGER.info("Arize tracing unavailable: required tracing dependencies are not installed.")
+    if phoenix_register is None:
+        LOGGER.info("Phoenix tracing unavailable: arize-phoenix-otel is not installed.")
         return
-
-    api_key = os.getenv("ARIZE_API_KEY")
-    space_id = os.getenv("ARIZE_SPACE_ID")
-    project_name = os.getenv("ARIZE_PROJECT_NAME")
-    if not api_key or not space_id or not project_name:
-        missing = [
-            name
-            for name, value in (
-                ("ARIZE_API_KEY", api_key),
-                ("ARIZE_SPACE_ID", space_id),
-                ("ARIZE_PROJECT_NAME", project_name),
-            )
-            if not value
-        ]
-        LOGGER.info("Arize tracing disabled: missing required env vars: %s", ", ".join(missing))
-        return
-
-    if arize_set_routing_context is None:
-        LOGGER.info("Arize tracing disabled: arize.otel.set_routing_context is unavailable.")
-        return
-
-    collector_endpoint = _collector_endpoint()
-    service_name = os.getenv("OTEL_SERVICE_NAME", DEFAULT_SERVICE_NAME)
-    deployment_environment = os.getenv("APP_ENV", "development")
 
     try:
-        provider = arize_register(
-            endpoint=collector_endpoint,
-            project_name=project_name,
+        provider = phoenix_register(
+            endpoint=_collector_endpoint(),
+            project_name=_project_name(),
             batch=True,
             auto_instrument=False,
+            protocol="http/protobuf",
             verbose=False,
-            api_key=api_key
         )
-        arize_set_routing_context(space_id=space_id, project_name=project_name)
-        _TRACER = provider.get_tracer("clearpath-estate.agent")
+        _TRACER = provider.get_tracer("executor-ai.agent")
         _TRACING_ENABLED = True
     except Exception:  # pragma: no cover - defensive
-        LOGGER.exception("Failed to initialize Arize AX tracing.")
+        LOGGER.exception("Failed to initialize Phoenix tracing.")
         return
 
-    if AnthropicInstrumentor is not None:
-        try:
-            AnthropicInstrumentor().instrument()
-            _ANTHROPIC_INSTRUMENTED = True
-        except Exception:  # pragma: no cover - defensive
-            LOGGER.exception("Failed to instrument Anthropic client for Arize tracing.")
-    else:
-        LOGGER.info("Anthropic instrumentor unavailable; Claude calls will use manual spans only.")
+    _ANTHROPIC_INSTRUMENTED = _instrument(
+        AnthropicInstrumentor,
+        provider,
+        "Anthropic",
+    )
+    _OPENAI_INSTRUMENTED = _instrument(
+        OpenAIInstrumentor,
+        provider,
+        "OpenAI",
+    )
 
 
-def init_phoenix() -> None:
-    """Compatibility alias for older imports."""
-    init_tracing()
+def _instrument(instrumentor_type: Any, provider: Any, provider_name: str) -> bool:
+    if instrumentor_type is None:
+        LOGGER.info("%s OpenInference instrumentor is not installed.", provider_name)
+        return False
+    try:
+        instrumentor_type().instrument(tracer_provider=provider)
+        return True
+    except Exception:  # pragma: no cover - defensive
+        LOGGER.exception("Failed to instrument %s for Phoenix tracing.", provider_name)
+        return False
 
 
 @contextmanager
 def span(name: str, **attributes: object) -> Iterator[Any]:
-    """Create a tracing span when Arize is configured, else fall back to a no-op."""
+    """Create a Phoenix span when configured, otherwise use a no-op span."""
     if not _INITIALIZED:
         init_tracing()
 
@@ -172,8 +155,8 @@ def _safe_attribute_value(value: object) -> object:
 
 
 def _collector_endpoint() -> str:
-    return os.getenv("ARIZE_COLLECTOR_ENDPOINT", DEFAULT_ARIZE_COLLECTOR_ENDPOINT)
+    return os.getenv("PHOENIX_COLLECTOR_ENDPOINT", DEFAULT_PHOENIX_COLLECTOR_ENDPOINT)
 
 
 def _project_name() -> str:
-    return os.getenv("ARIZE_PROJECT_NAME", DEFAULT_ARIZE_PROJECT_NAME)
+    return os.getenv("PHOENIX_PROJECT_NAME", DEFAULT_PHOENIX_PROJECT_NAME)

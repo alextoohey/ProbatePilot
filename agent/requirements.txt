@@ -6,8 +6,9 @@ uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 anthropic>=0.40.0
 openai>=1.50.0
-arize-otel
+arize-phoenix-otel
 openinference-instrumentation-anthropic>=0.1.0
+openinference-instrumentation-openai>=0.1.0
 opentelemetry-sdk>=1.42.1
 pydantic>=2.7.0
 email-validator>=2.0.0
