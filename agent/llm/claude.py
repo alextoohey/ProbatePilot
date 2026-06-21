@@ -23,7 +23,7 @@ _async_client: anthropic.AsyncAnthropic | None = None
 class DocumentParseError(RuntimeError):
     """Raised when a document needs a real structured parse and none is available."""
 
-def get_client() -> anthropic.Anthropic | None:
+def _get_client() -> anthropic.Anthropic | None:
     """Return a sync Anthropic client when configured, else None."""
     global _client
     if not os.getenv("ANTHROPIC_API_KEY"):
