@@ -109,13 +109,15 @@ Upload these from `/example documents` in this order:
 2. `02_letters_testamentary.pdf`
 3. `03_death_certificate.pdf`
 4. `04_bank_statement_wells_fargo.pdf`
-5. `05_grant_deed_berkeley_property.pdf`
-6. `06_vehicle_title_honda_civic.pdf`
-7. `07_mortgage_statement.pdf`
-8. `08_de160_inventory_and_appraisal.pdf`
-9. `09_creditor_notice_ucsf.pdf`
-10. `10_debt_payment_receipt_chase_visa.pdf`
-11. `11_distribution_receipt.pdf`
+5. `12_2025_form_1040_tax_return.pdf`
+6. `05_grant_deed_berkeley_property.pdf`
+7. `06_vehicle_title_honda_civic.pdf`
+8. `07_mortgage_statement.pdf`
+9. `13_homeowners_insurance_policy.pdf`
+10. `08_de160_inventory_and_appraisal.pdf`
+11. `09_creditor_notice_ucsf.pdf`
+12. `10_debt_payment_receipt_chase_visa.pdf`
+13. `11_distribution_receipt.pdf`
 
 ## Real-World File Types And Contents
 
@@ -131,12 +133,18 @@ These are the file types an executor would usually have:
   death date/place, residence, informant, registrar, and certification fields.
 - Bank and brokerage statements: downloaded PDFs. They contain institution, owner,
   account type, account suffix, statement period, balances, and transactions.
+- Most recent tax return: preparer PDF or scanned copy. It contains filing status,
+  recurring income sources, withholding, refund or balance due, and account clues for the
+  final Form 1040.
 - Deed: county recorder PDF or scanned copy. It contains APN, property address, legal
   description, grantor, grantee, recording date, and notarization.
 - Vehicle title: scanned PDF/JPG/PNG. It contains owner, VIN, plate, vehicle description,
   lienholder, odometer, and title status.
 - Mortgage or loan statements: downloaded PDFs. They contain servicer, loan number,
   property, balance, payment due, escrow, creditor address, and secured debt details.
+- Insurance policies: declarations PDF or scanned policy page. It contains carrier,
+  named insured, covered property, policy period, premium, coverage limits, and payee or
+  mortgagee details.
 - DE-160 inventory and appraisal: court-form PDF or scanned signed packet. It contains
   estate case data, inventory rows, values, and probate referee appraisal details.
 - Creditor notices and certified-mail receipts: generated letter PDFs plus scanned postal
@@ -248,27 +256,32 @@ Expected result:
 Fixtures:
 
 - `/example documents/04_bank_statement_wells_fargo.pdf`
+- `/example documents/12_2025_form_1040_tax_return.pdf`
 - `/example documents/05_grant_deed_berkeley_property.pdf`
 - `/example documents/06_vehicle_title_honda_civic.pdf`
+- `/example documents/13_homeowners_insurance_policy.pdf`
 - `/example documents/08_de160_inventory_and_appraisal.pdf`
 
 Steps:
 
 1. Upload the Wells Fargo statement.
 2. Confirm a bank-account asset appears.
-3. Upload the grant deed.
-4. Confirm a real-estate asset appears.
-5. Upload the vehicle title.
-6. If the vehicle title is classified as unknown, manually add the vehicle asset.
-7. Upload the DE-160 sample.
-8. Edit any asset values to match the fixture values.
-9. Mark appraised assets appropriately.
+3. Upload the 2025 tax return.
+4. Upload the grant deed.
+5. Confirm a real-estate asset appears.
+6. Upload the vehicle title.
+7. If the vehicle title is classified as unknown, manually add the vehicle asset.
+8. Upload the homeowners insurance policy.
+9. Upload the DE-160 sample.
+10. Edit any asset values to match the fixture values.
+11. Mark appraised assets appropriately.
 
 Expected result:
 
 - Bank statement parses as Bank Statement and creates an account asset ending 4412.
 - Grant deed parses as Deed and creates a real-estate asset for 1847 Marin Avenue.
-- Unsupported inventory and vehicle documents still save without breaking the flow.
+- Unsupported inventory, tax, insurance, and vehicle documents still save without
+  breaking the flow.
 - Manual asset editing works for type, label, detail fields, value, and appraised status.
 - Saved manual edits persist while staying on the Documents page.
 

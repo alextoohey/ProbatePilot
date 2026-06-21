@@ -22,6 +22,25 @@ type Doc = { id: string; name: string; type: string; documentType: string; parse
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
 
+// Offered when auto-detection can't identify a document and the user picks the
+// type manually. Values are stored verbatim as the document's documentType.
+const DOC_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "will", label: "Will or trust" },
+  { value: "death_certificate", label: "Death certificate" },
+  { value: "letters_testamentary", label: "Letters testamentary" },
+  { value: "bank_statement", label: "Bank or brokerage statement" },
+  { value: "deed", label: "Property deed" },
+  { value: "mortgage_statement", label: "Mortgage or loan statement" },
+  { value: "vehicle_title", label: "Vehicle title" },
+  { value: "de160_inventory", label: "DE-160 inventory & appraisal" },
+  { value: "creditor_notice", label: "Creditor notice" },
+  { value: "debt_payment_receipt", label: "Debt payment receipt" },
+  { value: "distribution_receipt", label: "Distribution receipt" },
+  { value: "tax_return", label: "Tax return" },
+  { value: "insurance_policy", label: "Insurance policy" },
+  { value: "other", label: "Other / not listed" },
+];
+
 function documentTypeLabel(documentType: string) {
   return documentType.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -78,11 +97,19 @@ function seedDocs(): Doc[] {
   ];
 }
 
+const CHECKLIST_ID_BY_DOC_TYPE: Record<string, string> = {
+  will: "will",
+  bank_statement: "bank",
+  deed: "deed",
+  death_certificate: "death-cert",
+  tax_return: "tax",
+  mortgage_statement: "mortgage",
+  insurance_policy: "insurance",
+  vehicle_title: "vehicle",
+};
+
 function checklistIdForDocumentType(documentType: string): string | null {
-  if (documentType === "will") return "will";
-  if (documentType === "bank_statement") return "bank";
-  if (documentType === "deed") return "deed";
-  return null;
+  return CHECKLIST_ID_BY_DOC_TYPE[documentType] ?? null;
 }
 
 function parseProgressLabel(progress: number) {
@@ -150,6 +177,9 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   const [parseProgress, setParseProgress] = React.useState(0);
   const [parsingFileName, setParsingFileName] = React.useState<string | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
+  // Set when auto-detection fails: holds the file awaiting a manual type choice.
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [pendingType, setPendingType] = React.useState<string>(DOC_TYPE_OPTIONS[0].value);
   const [assets, setAssets] = React.useState<Asset[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const parseDoneTimer = React.useRef<number | null>(null);
@@ -166,7 +196,7 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
       setDocs(seeded ? seedDocs() : []);
     });
     return () => { cancelled = true; };
-  }, [estateId]);
+  }, [estateId, seeded, E.assets]);
   const [draftRow, setDraftRow] = React.useState<Asset | null>(null);
   const [naSet, setNaSet] = React.useState<string[]>([]);
   const [openDoc, setOpenDoc] = React.useState<Doc | null>(null);
@@ -249,7 +279,7 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
   }
   function deleteAsset(id: string) { setAssets((cur) => cur.filter((a) => a.id !== id)); if (editingId === id) cancelEdit(); }
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, documentType?: string) {
     setUploadError(null);
     if (parseDoneTimer.current !== null) {
       window.clearTimeout(parseDoneTimer.current);
@@ -260,7 +290,14 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
     setParsing(true);
     let parsed = false;
     try {
-      await parseDocument(file, estateId);
+      const result = await parseDocument(file, estateId, documentType);
+      // Auto-detection failed and we have no manual choice yet — prompt for the type.
+      if (result.needsTypeSelection) {
+        setPendingFile(file);
+        setPendingType(DOC_TYPE_OPTIONS[0].value);
+        return;
+      }
+      setPendingFile(null);
       const refreshed = await getEstate(estateId);
       setDocs(docsFromEstateDocuments(refreshed.documents));
       setAssets(refreshed.assets.map(fromEstateAsset));
@@ -289,6 +326,16 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
       }
       if (inputRef.current) inputRef.current.value = "";
     }
+  }
+
+  function confirmPendingType() {
+    if (!pendingFile) return;
+    void uploadFile(pendingFile, pendingType);
+  }
+
+  function cancelPendingType() {
+    setPendingFile(null);
+    setUploadError(null);
   }
 
   const assetIcon: Record<string, typeof I.Home> = { Home: I.Home, Bank: I.Bank, Car: I.Car };
@@ -351,6 +398,41 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
           <div style={{ fontSize: "var(--text-sm)", color: "var(--critical-text)", marginTop: 10 }}>{uploadError}</div>
         ) : null}
       </label>
+
+      {pendingFile ? (
+        <div style={{
+          borderRadius: "var(--radius-lg)", border: "1.5px solid var(--border-strong)",
+          background: "var(--surface-card)", padding: "20px 22px", display: "grid", gap: 12,
+        }}>
+          <div>
+            <div style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-strong)" }}>
+              We couldn&apos;t identify this document
+            </div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>
+              Tell us what <strong>{pendingFile.name}</strong> is so we can file it correctly.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select
+              value={pendingType}
+              onChange={(e) => setPendingType(e.target.value)}
+              disabled={parsing}
+              style={{
+                flex: "1 1 240px", minWidth: 0, padding: "9px 12px", borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border-strong)", background: "var(--surface-card)",
+                fontSize: "var(--text-sm)", color: "var(--text-strong)", cursor: "pointer", appearance: "none",
+              }}>
+              {DOC_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Button onClick={confirmPendingType} disabled={parsing}>
+              {parsing ? "Saving…" : "Save document"}
+            </Button>
+            <Button variant="ghost" onClick={cancelPendingType} disabled={parsing}>Cancel</Button>
+          </div>
+        </div>
+      ) : null}
 
       <Card title="What to upload" subtitle="Required documents first, then optional ones you only need if they apply to this estate" padded={false}>
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>

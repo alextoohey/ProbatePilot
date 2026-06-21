@@ -29,12 +29,16 @@ test pass should add scanned image fixtures.
   registrar fields, and certification details.
 - Bank statement: institution, account owner, account type, account number suffix,
   statement period, beginning/ending balances, and transactions.
+- Tax return: taxpayer, tax year, filing status, recurring income sources, withholding,
+  refund or balance due, and preparer/executor notes.
 - Deed: county recorder information, APN, property address, grantor, grantee, legal
   description, recording date, and notarization.
 - Vehicle title: owner, VIN, plate, vehicle description, lienholder, odometer, and title
   status.
 - Mortgage statement: servicer, loan number, property, principal balance, payment due,
   escrow, and creditor address.
+- Insurance policy: carrier, named insured, policy period, insured property, coverage
+  limits, premium, mortgagee, and next payment due.
 - DE-160 inventory: court case, executor, inventory rows, estimated values, appraised
   values, and probate referee details.
 - Creditor notice: estate case, executor, creditor name/address, claim amount, mailing
@@ -50,13 +54,15 @@ Use the files in numeric order for the happy-path workflow:
 2. `02_letters_testamentary.pdf`
 3. `03_death_certificate.pdf`
 4. `04_bank_statement_wells_fargo.pdf`
-5. `05_grant_deed_berkeley_property.pdf`
-6. `06_vehicle_title_honda_civic.pdf`
-7. `07_mortgage_statement.pdf`
-8. `08_de160_inventory_and_appraisal.pdf`
-9. `09_creditor_notice_ucsf.pdf`
-10. `10_debt_payment_receipt_chase_visa.pdf`
-11. `11_distribution_receipt.pdf`
+5. `12_2025_form_1040_tax_return.pdf`
+6. `05_grant_deed_berkeley_property.pdf`
+7. `06_vehicle_title_honda_civic.pdf`
+8. `07_mortgage_statement.pdf`
+9. `13_homeowners_insurance_policy.pdf`
+10. `08_de160_inventory_and_appraisal.pdf`
+11. `09_creditor_notice_ucsf.pdf`
+12. `10_debt_payment_receipt_chase_visa.pdf`
+13. `11_distribution_receipt.pdf`
 
 The current parser should recognize the will, bank statement, and deed. The remaining
 fixtures are valid uploads for workflow testing and may be classified as `unknown` until

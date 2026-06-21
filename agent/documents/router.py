@@ -16,8 +16,11 @@ from .will import parse_will
 LOGGER = logging.getLogger(__name__)
 
 
-async def parse_document_text(text: str) -> DocumentExtraction:
-    document_type = _detect_type(text)
+async def parse_document_text(text: str, forced_type: str | None = None) -> DocumentExtraction:
+    # When the user manually picks a type after auto-detection failed, honor their
+    # choice instead of re-detecting. Types we have no structured parser for fall
+    # through to the UnknownDocumentExtraction branch and are stored as-is.
+    document_type = forced_type or _detect_type(text)
     with span(
         "documents.parse",
         action_type="document_parse",

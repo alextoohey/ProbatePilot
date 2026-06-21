@@ -24,7 +24,7 @@ from prompts.letters import build_letter_fallback, build_letter_prompt, normaliz
 from prompts.system import build_chat_prompt
 from schemas.api import AnyDocumentExtraction, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
-from schemas.documents import BankStatementExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
+from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Asset, EstateState, Executor, UploadedDocument
 from store.redis_client import (
     add_document,
@@ -272,6 +272,7 @@ def _merge_extraction(estate_id: str, extraction: AnyDocumentExtraction) -> None
 @app.post("/parse-document", response_model=ParseDocumentResponse)
 async def parse_document(
     estateId: str = Form(default="demo-milligan"),
+    documentType: str = Form(default=""),
     file: UploadFile = File(...),
 ) -> ParseDocumentResponse:
     content_type = (file.content_type or "application/octet-stream").split(";")[0].strip()
@@ -288,6 +289,9 @@ async def parse_document(
     if not text.strip():
         raise HTTPException(status_code=422, detail="Could not extract any text from the uploaded file.")
 
+    # The user can manually specify the type when auto-detection failed on a prior attempt.
+    forced_type = documentType.strip() or None
+
     try:
         with span(
             "route.parse_document.extract",
@@ -295,8 +299,9 @@ async def parse_document(
             action_type="document_parse",
             upload_filename=filename,
             content_type=content_type,
+            forced_type=forced_type or "",
         ) as current_span:
-            extraction = await parse_document_text(text)
+            extraction = await parse_document_text(text, forced_type=forced_type)
             set_span_attribute(current_span, "doc_type", extraction.documentType)
             set_span_attribute(current_span, "chunk_count", len(extraction.rawChunks))
     except DocumentParseError as exc:
@@ -308,31 +313,44 @@ async def parse_document(
             ),
         ) from exc
 
-    if isinstance(extraction, UnknownDocumentExtraction):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "We couldn't identify this document. Please reupload a clearer file or "
-                "enter the information manually."
-            ),
+    # Auto-detection failed and the user hasn't told us the type yet: don't store
+    # anything, ask the UI to prompt for a manual type selection instead.
+    if extraction.documentType == "unknown" and forced_type is None:
+        return ParseDocumentResponse(
+            estateId=estateId,
+            extraction=extraction,
+            documentType="unknown",
+            needsTypeSelection=True,
+            alerts=[],
         )
 
+    # Label the stored document with the user's choice when we have no structured
+    # parser for it (e.g. death certificate), otherwise with the parsed type.
+    resolved_type = forced_type if extraction.documentType == "unknown" and forced_type else extraction.documentType
+
+    # Structured facts are written back into estate state (no-op for unknown types).
     _merge_extraction(estateId, extraction)
 
     doc_id = f"doc-{uuid.uuid4().hex[:8]}-{filename}"
     set_document_file(estateId, doc_id, content_type, content)
     add_document(
         estateId,
-        UploadedDocument(id=doc_id, fileName=filename, documentType=extraction.documentType),
+        UploadedDocument(id=doc_id, fileName=filename, documentType=resolved_type),
     )
 
     chunks = extraction.rawChunks
     if chunks:
         embeddings = embed_texts(chunks)
-        upsert_vectors(estateId, chunks, embeddings, source=filename, document_type=extraction.documentType)
+        upsert_vectors(estateId, chunks, embeddings, source=filename, document_type=resolved_type)
 
     alerts = await run_deadline_agent(estateId)
-    return ParseDocumentResponse(estateId=estateId, extraction=extraction, alerts=alerts)
+    return ParseDocumentResponse(
+        estateId=estateId,
+        extraction=extraction,
+        documentType=resolved_type,
+        needsTypeSelection=False,
+        alerts=alerts,
+    )
 
 
 @app.post("/chat")

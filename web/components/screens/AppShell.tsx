@@ -8,6 +8,7 @@ import {
   EXECUTOR_PROFILE,
   type EstateProfile,
   type ExecutorProfile,
+  type Alert as DesignAlert,
 } from "@/lib/design/data";
 import { getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
 import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
@@ -69,21 +70,43 @@ export function AppShell() {
   const [showCreate, setShowCreate] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
   const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>({ all: true, deadlines: true, weekly: true, email: false });
-  const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[]>([]);
+  const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[] | null>(null);
   const [liveEstate, setLiveEstate] = React.useState<EstateState | null>(null);
+  const [liveAlertsFailed, setLiveAlertsFailed] = React.useState(false);
   const E = DEMO_ESTATE;
   const I = ExecutorIcons;
 
   React.useEffect(() => {
     const est = estates.find((e) => e.id === activeEstateId);
-    if (!est?.seeded) return;
-    Promise.all([runDeadlineAgent(activeEstateId), getEstate(activeEstateId)])
+    let cancelled = false;
+    setDetailId(null);
+    setLiveAlertsFailed(false);
+    setLiveEstate(null);
+    if (!est?.seeded) {
+      setLiveAlerts([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const controller = new AbortController();
+    setLiveAlerts(null);
+    Promise.all([runDeadlineAgent(activeEstateId, controller.signal), getEstate(activeEstateId, controller.signal)])
       .then(([alerts, estate]) => {
+        if (cancelled) return;
         setLiveAlerts(alerts);
         setLiveEstate(estate);
       })
-      .catch(() => {});
-  }, [activeEstateId]);
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (cancelled) return;
+        setLiveAlerts([]);
+        setLiveAlertsFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [activeEstateId, estates]);
   const titles: Record<Route, string> = { dashboard: "Dashboard", documents: "Documents", chat: "Estate chat", letters: "Letters" };
 
   // Load the logged-in user and their estates. A missing/stale session bounces
@@ -166,9 +189,22 @@ export function AppShell() {
     setRoute("dashboard");
   }
 
-  const allAlerts = liveAlerts.length > 0
-    ? liveAlerts.map((a) => ({ ...a, steps: [] as string[], whatYouNeed: [] as string[], daysRemaining: a.daysRemaining ?? 0 }))
-    : [...E.alerts, ...(E.alertsNext || [])];
+  const guidanceAlerts = [...E.alerts, ...(E.alertsNext || [])];
+  const allAlerts: DesignAlert[] = liveAlerts === null
+    ? []
+    : liveAlerts.length > 0
+      ? liveAlerts.map((a) => {
+        const guidance = guidanceAlerts.find((g) => g.id === a.id);
+        return {
+          ...a,
+          steps: guidance?.steps || [],
+          whatYouNeed: guidance?.whatYouNeed || [],
+          daysRemaining: a.daysRemaining,
+        };
+      })
+      : active.seeded
+        ? []
+        : guidanceAlerts;
   const detailItem = active.seeded && detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
 
   let body: React.ReactNode;

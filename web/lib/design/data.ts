@@ -39,7 +39,7 @@ export type Alert = {
   id: string;
   severity: Severity;
   title: string;
-  daysRemaining: number;
+  daysRemaining?: number | null;
   rule: string;
   body: string;
   actionRequired: string;
@@ -174,7 +174,7 @@ export const DEMO_ESTATE: DemoEstate = {
   ],
   alerts: [
     {
-      id: "al1",
+      id: "alert-creditor-notice",
       severity: "critical",
       title: "Known creditors haven't been notified",
       daysRemaining: 20,
@@ -195,7 +195,7 @@ export const DEMO_ESTATE: DemoEstate = {
       ],
     },
     {
-      id: "al2",
+      id: "alert-de-160-inventory",
       severity: "warning",
       title: "DE-160 Inventory & Appraisal is blocked",
       daysRemaining: 9,
@@ -216,7 +216,7 @@ export const DEMO_ESTATE: DemoEstate = {
       ],
     },
     {
-      id: "al3",
+      id: "alert-final-1040",
       severity: "info",
       title: "Final Form 1040 due April 15, 2027",
       daysRemaining: 299,
@@ -238,7 +238,7 @@ export const DEMO_ESTATE: DemoEstate = {
   ],
   alertsNext: [
     {
-      id: "inv1",
+      id: "alert-de-160-ready",
       severity: "warning",
       title: "File the DE-160 Inventory & Appraisal",
       daysRemaining: 30,
