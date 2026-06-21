@@ -56,7 +56,6 @@ export function EstateSwitcher({ estates, activeId, onSwitch, onCreate }: Props)
                   <Avatar name={e.deceasedName} size="sm" tone={on ? "brand" : "neutral"} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{e.deceasedName}</span>
-                    {!e.seeded ? <span style={{ display: "block", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Setup in progress</span> : null}
                   </span>
                   {on ? <I.Check size={16} color="var(--evergreen-700)" /> : null}
                 </button>
