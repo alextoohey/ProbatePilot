@@ -24,8 +24,10 @@ CHAT_STREAM_FALLBACK = (
 _client: anthropic.Anthropic | None = None
 _async_client: anthropic.AsyncAnthropic | None = None
 
+class DocumentParseError(RuntimeError):
+    """Raised when a document needs a real structured parse and none is available."""
 
-def get_client() -> anthropic.Anthropic | None:
+def _get_client() -> anthropic.Anthropic | None::
     """Return a sync Anthropic client when configured, else None."""
     global _client
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -83,6 +85,7 @@ async def structured_extract(
     content: str,
     response_model: type[ModelT],
     fallback: dict[str, Any] | None = None,
+    allow_fallback: bool = True,
 ) -> ModelT:
     """Extract structured document data with Claude, falling back to deterministic data."""
     with span(
@@ -97,11 +100,16 @@ async def structured_extract(
         tool_name = response_model.__name__
         schema = response_model.model_json_schema()
         schema.pop("title", None)
-        client = get_client()
+        client = _get_client()
+
         if client is None:
             set_span_attribute(current_span, "fallback_used", True)
             set_span_attribute(current_span, "fallback_reason", "anthropic_client_unavailable")
-            return response_model.model_validate(fallback or {})
+            if not allow_fallback:
+                raise DocumentParseError("Structured document extraction did not complete.")
+            if fallback is None:
+                raise DocumentParseError("No structured extraction fallback is available.")
+            return response_model.model_validate(fallback)
 
         try:
             response = client.messages.create(
@@ -126,14 +134,19 @@ async def structured_extract(
                     return response_model.model_validate(block.input)
 
             set_span_attribute(current_span, "fallback_reason", "missing_tool_use")
+            failure = DocumentParseError("Structured document extraction did not complete.")
         except Exception as exc:
+            failure = exc
             set_span_error(current_span, exc)
             set_span_attribute(current_span, "fallback_reason", f"{exc.__class__.__name__}: {str(exc)[:160]}")
             LOGGER.exception("Claude structured extraction failed; using deterministic fallback.")
 
         set_span_attribute(current_span, "fallback_used", True)
-        return response_model.model_validate(fallback or {})
-
+        if not allow_fallback:
+            raise DocumentParseError("Structured document extraction did not complete.") from failure
+        if fallback is None:
+            raise DocumentParseError("No structured extraction fallback is available.") from failure
+        return response_model.model_validate(fallback)
 
 async def generate_letter_draft(
     *,

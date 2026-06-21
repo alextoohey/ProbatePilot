@@ -12,6 +12,7 @@ async def parse_bank_statement(text: str) -> BankStatementExtraction:
         prompt=BANK_STATEMENT_EXTRACTION_PROMPT,
         content=text,
         response_model=BankStatementExtraction,
+        allow_fallback=False,
         fallback={
             "documentType": "bank_statement",
             "confidence": 0.55,

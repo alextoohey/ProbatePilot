@@ -15,13 +15,13 @@ from fastapi.responses import StreamingResponse
 from agents.deadline_agent import run_deadline_agent
 from documents.pdf_reader import extract_text
 from documents.router import parse_document_text
-from llm.claude import generate_letter_draft, stream_chat
+from llm.claude import DocumentParseError, generate_letter_draft, stream_chat
 from llm.embeddings import embed_query, embed_texts
 from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
 from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
 from prompts.system import build_chat_prompt
 from schemas.api import AnyDocumentExtraction, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
-from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
+from schemas.documents import BankStatementExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
 from schemas.estate import Asset, UploadedDocument
 from store.redis_client import (
     add_document,
@@ -132,16 +132,34 @@ async def parse_document(
     if not text.strip():
         raise HTTPException(status_code=422, detail="Could not extract any text from the uploaded file.")
 
-    with span(
-        "route.parse_document.extract",
-        estate_id=estateId,
-        action_type="document_parse",
-        upload_filename=filename,
-        content_type=content_type,
-    ) as current_span:
-        extraction = await parse_document_text(text)
-        set_span_attribute(current_span, "doc_type", extraction.documentType)
-        set_span_attribute(current_span, "chunk_count", len(extraction.rawChunks))
+    try:
+        with span(
+            "route.parse_document.extract",
+            estate_id=estateId,
+            action_type="document_parse",
+            upload_filename=filename,
+            content_type=content_type,
+        ) as current_span:
+            extraction = await parse_document_text(text)
+            set_span_attribute(current_span, "doc_type", extraction.documentType)
+            set_span_attribute(current_span, "chunk_count", len(extraction.rawChunks))
+    except DocumentParseError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't parse this required document. Please reupload a clearer PDF, "
+                "image, or text file, or enter the information manually."
+            ),
+        ) from exc
+
+    if isinstance(extraction, UnknownDocumentExtraction):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't identify this document. Please reupload a clearer file or "
+                "enter the information manually."
+            ),
+        )
 
     _merge_extraction(estateId, extraction)
 

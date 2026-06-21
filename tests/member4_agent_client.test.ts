@@ -188,6 +188,11 @@ async function main() {
   );
   assert.match(uploadScreenSource, /parseDocument/);
   assert.match(uploadScreenSource, /getEstate/);
+  assert.match(uploadScreenSource, /uploadError/);
+  assert.match(uploadScreenSource, /setUploadError\(null\)/);
+  assert.match(uploadScreenSource, /disabled=\{parsing\}/);
+  assert.match(uploadScreenSource, /if \(parsing\) return/);
+  assert.match(uploadScreenSource, /if \(!parsing\) inputRef\.current\?\.click\(\)/);
   assert.doesNotMatch(uploadScreenSource, /function fakeUpload/);
 
   console.log("member4 agent client integration tests passed");
