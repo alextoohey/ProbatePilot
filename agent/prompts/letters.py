@@ -35,40 +35,33 @@ def build_letter_prompt(estate: EstateState, letter_type: str, recipient_name: s
     selected_type = normalize_letter_type(letter_type)
     recipient = recipient_name or _default_recipient(selected_type)
     estate_json = json.dumps(estate.model_dump(mode="json"), indent=2, sort_keys=True)
-    relevant_context = _relevant_context(estate, selected_type)
+    relevant_context = _relevant_context(estate, selected_type, recipient)
     statute_context = _statute_context(selected_type)
 
-    return f"""Draft a formatted, sign-ready {LETTER_TYPE_LABELS[selected_type]}.
+    return f"""Draft a sign-ready {LETTER_TYPE_LABELS[selected_type]} addressed specifically to: {recipient}
 
-Letter type: {selected_type}
-Recipient: {recipient}
-
-Estate facts to include:
-- Deceased name: {estate.deceasedName}
-- Date of death: {estate.dateOfDeath}
-- Executor: {estate.executor.name}
-- Executor email: {estate.executor.email}
-- Appointment date / letters testamentary date: {estate.appointmentDate}
+Estate facts:
+- Deceased: {estate.deceasedName}, died {estate.dateOfDeath}
+- Executor: {estate.executor.name}, email: {estate.executor.email}
+- Letters testamentary issued: {estate.appointmentDate}
 - Jurisdiction: California
 
-Relevant estate details:
+Relevant details:
 {relevant_context}
 
 Statute or context:
 {statute_context}
 
-Full estate state JSON:
-{estate_json}
-
 Drafting rules:
-- Produce only the letter text, ready to send.
-- Use a warm, direct, professional tone. The executor may be grieving.
-- Do not give legal advice or overclaim legal authority.
-- If a needed fact is missing, include a bracketed placeholder such as [account number],
-  [property address], [mailing address], or [claim deadline].
-- Include a clear purpose, a concise request or next step, and a signature block for
-  {estate.executor.name}, Executor of the Estate of {estate.deceasedName}.
-- For creditor notices, cite California Probate Code §9051 and request claim information.
+- Produce only the letter text. No preamble or commentary outside the letter.
+- Output plain text only. No markdown, no **, no --, no #, no >, no tables, no backticks.
+- Address the letter directly to "{recipient}" — use their name, never a placeholder like [CREDITOR NAME].
+- Warm, direct, professional tone. The executor may be grieving.
+- Do not give legal advice. Do not overclaim legal authority.
+- Only use a [bracketed placeholder] if the fact is truly unknown and critical. Omit optional fields entirely.
+- Format as a traditional business letter: sender block, date, recipient block, salutation, body paragraphs, closing, signature.
+- End with a signature block for {estate.executor.name}, Executor of the Estate of {estate.deceasedName}.
+- For creditor notices: cite California Probate Code §9051, state the specific amount owed to {recipient}, and ask them to file a claim.
 """
 
 
@@ -233,8 +226,15 @@ def _statute_context(letter_type: str) -> str:
     return "Operational estate administration letter; avoid giving legal advice or making legal conclusions."
 
 
-def _relevant_context(estate: EstateState, letter_type: str) -> str:
+def _relevant_context(estate: EstateState, letter_type: str, recipient: str | None = None) -> str:
     if letter_type == "creditor_notice":
+        if recipient:
+            match = next(
+                (d for d in estate.debts if recipient.lower() in d.creditor.lower()),
+                None,
+            )
+            if match:
+                return f"Debt for this creditor: {match.creditor}, ${match.amount:,.2f} ({match.type})"
         return f"Known debts:\n{_format_debts(estate)}"
     if letter_type == "bank_notification":
         bank_assets = [asset.description for asset in estate.assets if asset.type == "bank_account"]
