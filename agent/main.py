@@ -22,15 +22,17 @@ from llm.embeddings import embed_query, embed_texts
 from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
 from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
 from prompts.system import build_chat_prompt
-from schemas.api import AnyDocumentExtraction, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
+from schemas.api import AnyDocumentExtraction, ChatHistoryResponse, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
-from schemas.estate import Asset, EstateState, Executor, UploadedDocument
+from schemas.estate import Asset, EstateState, Executor, UploadedDocument, utc_now_iso
 from store.redis_client import (
     add_document,
+    append_chat_messages,
     create_session,
     create_user,
     delete_session,
+    get_chat_history,
     get_estate_state,
     get_document_file,
     get_session_user_id,
@@ -374,6 +376,13 @@ async def chat(request: ChatRequest) -> StreamingResponse:
             [match.text for match in matches],
         )
         set_span_attribute(current_span, "prompt_length", len(prompt))
+        # Prior turns give the model conversational context; the current message
+        # is appended inside stream_chat.
+        history = [
+            {"role": m.get("role", ""), "content": m.get("content", "")}
+            for m in get_chat_history(request.estateId)
+        ]
+        set_span_attribute(current_span, "history_turns", len(history))
 
     async def events():
         with span(
@@ -383,11 +392,29 @@ async def chat(request: ChatRequest) -> StreamingResponse:
             top_k=request.topK,
             retrieved_chunks=len(matches),
         ):
-            async for token in stream_chat(prompt, request.message):
+            answer = ""
+            async for token in stream_chat(prompt, request.message, history):
+                answer += token
                 yield f"data: {json.dumps({'token': token})}\n\n"
+            # Persist the exchange so the conversation survives reloads.
+            now = utc_now_iso()
+            append_chat_messages(
+                request.estateId,
+                [
+                    {"role": "user", "content": request.message, "createdAt": now},
+                    {"role": "assistant", "content": answer, "createdAt": utc_now_iso()},
+                ],
+            )
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@app.get("/chat-history/{estate_id}")
+async def chat_history(estate_id: str) -> ChatHistoryResponse:
+    with span("route.chat_history", estate_id=estate_id, action_type="chat_history"):
+        messages = get_chat_history(estate_id)
+        return ChatHistoryResponse(estateId=estate_id, messages=messages)
 
 
 @app.post("/generate-letter")

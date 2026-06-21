@@ -1,4 +1,5 @@
 import {
+  chatHistoryResponseSchema,
   chatRequestSchema,
   deadlineAgentRequestSchema,
   deadlineAgentResponseSchema,
@@ -12,6 +13,7 @@ import { meResponseSchema, publicUserSchema } from "./schemas/auth";
 import { z } from "zod";
 import type {
   Alert,
+  ChatMessage,
   ChatRequest,
   EstateState,
   GenerateLetterResponse,
@@ -123,6 +125,13 @@ export async function parseDocument(
   }
   const payload = await response.json();
   return parseDocumentResponseSchema.parse(payload);
+}
+
+export async function getChatHistory(estateId = DEFAULT_ESTATE_ID, signal?: AbortSignal): Promise<ChatMessage[]> {
+  const response = await fetch(`/api/agent/chat-history/${encodeURIComponent(estateId)}`, { signal });
+  if (!response.ok) return [];
+  const payload = await response.json();
+  return chatHistoryResponseSchema.parse(payload).messages;
 }
 
 export async function openChatStream(request: ChatRequest): Promise<ReadableStream<Uint8Array> | null> {

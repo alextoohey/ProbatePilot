@@ -199,8 +199,21 @@ async def generate_letter_draft(
             return fallback
 
 
-async def stream_chat(prompt: str, message: str) -> AsyncIterator[str]:
-    """Stream chat tokens from Claude when configured, else use an offline fallback."""
+async def stream_chat(
+    prompt: str,
+    message: str,
+    history: list[dict[str, str]] | None = None,
+) -> AsyncIterator[str]:
+    """Stream chat tokens from Claude when configured, else use an offline fallback.
+
+    ``history`` is the prior conversation (alternating user/assistant turns) so the
+    model keeps context across messages; the current ``message`` is appended last.
+    """
+    prior = [
+        {"role": m["role"], "content": m["content"]}
+        for m in (history or [])
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
     with span(
         "llm.stream_chat",
         action_type="chat_query",
@@ -208,6 +221,7 @@ async def stream_chat(prompt: str, message: str) -> AsyncIterator[str]:
         llm_model=REASONING_MODEL,
         prompt_length=len(prompt),
         message_length=len(message),
+        history_turns=len(prior),
     ) as current_span:
         client = get_async_client()
         if client is not None:
@@ -216,7 +230,7 @@ async def stream_chat(prompt: str, message: str) -> AsyncIterator[str]:
                     model=REASONING_MODEL,
                     max_tokens=1200,
                     system=prompt,
-                    messages=[{"role": "user", "content": message}],
+                    messages=[*prior, {"role": "user", "content": message}],
                 ) as stream:
                     async for text in stream.text_stream:
                         yield text
