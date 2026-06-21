@@ -202,7 +202,7 @@ export function UploadScreen({ estate }: Props) {
         <div style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-strong)" }}>
           {parsing ? "Reading the document…" : "Drop a document, or click to upload"}
         </div>
-        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or text. Parsed by Claude</div>
+        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>PDF, image, or plain text file</div>
         {uploadError ? (
           <div style={{ fontSize: "var(--text-sm)", color: "var(--critical-text)", marginTop: 10 }}>{uploadError}</div>
         ) : null}
@@ -273,7 +273,7 @@ export function UploadScreen({ estate }: Props) {
           </ul>
         </Card>
 
-        <Card title="Estate, reconstructed" subtitle={seeded ? "Extracted from your documents. Edit anything we got wrong." : "Builds automatically as you add documents"} padded={false}
+        <Card title="Assets" subtitle="Pulled from your documents. Add or adjust as needed." padded={false}
           footer={<Button variant="secondary" size="sm" leadingIcon={<I.Plus size={15} />} onClick={addAsset}>Add asset</Button>}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {assets.length === 0 ? (
