@@ -1,5 +1,6 @@
 import {
   chatRequestSchema,
+  completeAlertRequestSchema,
   deadlineAgentRequestSchema,
   deadlineAgentResponseSchema,
   estateResponseSchema,
@@ -99,6 +100,20 @@ export async function runDeadlineAgent(estateId = DEFAULT_ESTATE_ID, signal?: Ab
   });
   const payload = await response.json();
   return deadlineAgentResponseSchema.parse(payload).alerts;
+}
+
+export async function completeAlert(estateId = DEFAULT_ESTATE_ID, alertId: string): Promise<EstateState> {
+  const request = completeAlertRequestSchema.parse({ estateId, alertId });
+  const response = await fetch("/api/agent/complete-alert", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, "We couldn't mark that step complete."));
+  }
+  const payload = await response.json();
+  return estateResponseSchema.parse(payload).estate;
 }
 
 export async function parseDocument(

@@ -35,6 +35,7 @@ export function Alert({
   children,
   rule,
   daysRemaining,
+  timingLabel,
   actionRequired,
   onOpen,
   actionLabel = "View steps",
@@ -46,6 +47,7 @@ export function Alert({
   children?: React.ReactNode;
   rule?: React.ReactNode;
   daysRemaining?: number;
+  timingLabel?: string;
   actionRequired?: React.ReactNode;
   onOpen?: () => void;
   actionLabel?: string;
@@ -93,7 +95,11 @@ export function Alert({
           </h3>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "none" }}>
-          {typeof daysRemaining === "number" ? (
+          {timingLabel ? (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)" as unknown as number, color: t.fg, border: `1px solid ${t.bd}`, borderRadius: "var(--radius-full)", padding: "3px 10px", whiteSpace: "nowrap" }}>
+              {timingLabel}
+            </span>
+          ) : typeof daysRemaining === "number" ? (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)" as unknown as number, color: t.fg, border: `1px solid ${t.bd}`, borderRadius: "var(--radius-full)", padding: "3px 10px", whiteSpace: "nowrap" }}>
               {daysRemaining} days
             </span>

@@ -10,7 +10,7 @@ import {
   type ExecutorProfile,
   type Alert as DesignAlert,
 } from "@/lib/design/data";
-import { getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
+import { completeAlert, getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
 import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
 import { Sidebar } from "./Sidebar";
 import { DashboardScreen } from "./DashboardScreen";
@@ -24,6 +24,33 @@ import { ProfileEditorModal } from "./ProfileEditorModal";
 
 type Route = "dashboard" | "documents" | "chat" | "letters";
 type NotifPrefs = { all: boolean; deadlines: boolean; weekly: boolean; email: boolean };
+function fallbackSteps(alert: BackendAlert): string[] {
+  return [
+    `Confirm the current status of ${alert.title.toLowerCase()} and gather any supporting document or note that shows what has already been done.`,
+    alert.actionRequired.endsWith(".") ? alert.actionRequired : `${alert.actionRequired}.`,
+    "Update the estate record so this alert and its linked task clear on the next refresh.",
+  ];
+}
+
+function fallbackWhatYouNeed(alert: BackendAlert): string[] {
+  return [
+    "The current status of this filing, notice, or task",
+    "Any supporting document that proves the step is complete",
+    "The date to record once the estate file has been updated",
+  ];
+}
+
+function toDisplayAlert(alert: BackendAlert, guidanceAlerts: DesignAlert[]): DesignAlert {
+  const guidance = guidanceAlerts.find((item) => item.id === alert.id);
+  return {
+    ...alert,
+    body: guidance?.body || alert.body,
+    daysRemaining: alert.daysRemaining,
+    timingStatus: alert.timingStatus,
+    whatYouNeed: alert.whatYouNeed?.length ? alert.whatYouNeed : guidance?.whatYouNeed || fallbackWhatYouNeed(alert),
+    steps: alert.steps?.length ? alert.steps : guidance?.steps || fallbackSteps(alert),
+  };
+}
 
 // The agent owns the canonical estate shape; the ported UI screens read the
 // lighter EstateProfile/ExecutorProfile shapes. Map the real, logged-in data
@@ -73,28 +100,55 @@ export function AppShell() {
   const [liveAlerts, setLiveAlerts] = React.useState<BackendAlert[] | null>(null);
   const [liveEstate, setLiveEstate] = React.useState<EstateState | null>(null);
   const [liveAlertsFailed, setLiveAlertsFailed] = React.useState(false);
+  const [completingId, setCompletingId] = React.useState<string | null>(null);
+  const [completionError, setCompletionError] = React.useState<string | null>(null);
   const E = DEMO_ESTATE;
   const I = ExecutorIcons;
 
   React.useEffect(() => {
-    const est = estates.find((e) => e.id === activeEstateId);
+    if (!activeEstateId) return;
     let cancelled = false;
+    const controller = new AbortController();
     setDetailId(null);
     setLiveAlertsFailed(false);
+    setCompletionError(null);
     setLiveEstate(null);
-    if (!est?.seeded) {
-      setLiveAlerts([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-    const controller = new AbortController();
     setLiveAlerts(null);
-    Promise.all([runDeadlineAgent(activeEstateId, controller.signal), getEstate(activeEstateId, controller.signal)])
-      .then(([alerts, estate]) => {
+    getEstate(activeEstateId, controller.signal)
+      .then((estate) => {
         if (cancelled) return;
-        setLiveAlerts(alerts);
         setLiveEstate(estate);
+        setLiveAlerts(estate.alerts);
+        setEstates((cur) =>
+          cur.map((item) =>
+            item.id === activeEstateId
+              ? { ...item, phase: estate.phase, hasDocuments: item.id === "demo-milligan" || estate.documents.length > 0 }
+              : item,
+          ),
+        );
+
+        return runDeadlineAgent(activeEstateId, controller.signal)
+          .then((alerts) => {
+            if (cancelled) return null;
+            setLiveAlerts(alerts);
+            return getEstate(activeEstateId, controller.signal);
+          })
+          .then((updatedEstate) => {
+            if (cancelled || !updatedEstate) return;
+            setLiveEstate(updatedEstate);
+            setEstates((cur) =>
+              cur.map((item) =>
+                item.id === activeEstateId
+                  ? { ...item, phase: updatedEstate.phase, hasDocuments: item.id === "demo-milligan" || updatedEstate.documents.length > 0 }
+                  : item,
+              ),
+            );
+          })
+          .catch((error) => {
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            if (cancelled) return;
+            setLiveAlertsFailed(true);
+          });
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -106,7 +160,7 @@ export function AppShell() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeEstateId, estates]);
+  }, [activeEstateId]);
   const titles: Record<Route, string> = { dashboard: "Dashboard", documents: "Documents", chat: "Estate chat", letters: "Letters" };
 
   // Load the logged-in user and their estates. A missing/stale session bounces
@@ -151,18 +205,39 @@ export function AppShell() {
 
   function navigate(r: Route) {
     setDetailId(null);
+    setCompletionError(null);
     setRoute(r);
   }
   function openStep(id: string) {
+    setCompletionError(null);
     setDetailId(id);
   }
-  function completeStep(id: string) {
-    setCompletedIds((c) => (c.includes(id) ? c : [...c, id]));
-    setDetailId(null);
+  async function completeStep(id: string) {
+    setCompletionError(null);
+    setCompletingId(id);
+    try {
+      const estate = await completeAlert(activeEstateId, id);
+      setCompletedIds((c) => (c.includes(id) ? c : [...c, id]));
+      setLiveEstate(estate);
+      setLiveAlerts(estate.alerts);
+      setEstates((cur) =>
+        cur.map((item) =>
+          item.id === activeEstateId
+            ? { ...item, phase: estate.phase, hasDocuments: item.id === "demo-milligan" || estate.documents.length > 0 }
+            : item,
+        ),
+      );
+      setDetailId(null);
+    } catch (error) {
+      setCompletionError(error instanceof Error ? error.message : "We couldn't mark that step complete.");
+    } finally {
+      setCompletingId(null);
+    }
   }
   function switchEstate(id: string) {
     setActiveEstateId(id);
     setDetailId(null);
+    setCompletionError(null);
     setRoute("dashboard");
   }
   // After a document is parsed, re-fetch the estate so chat/letters unlock
@@ -193,19 +268,14 @@ export function AppShell() {
   const allAlerts: DesignAlert[] = liveAlerts === null
     ? []
     : liveAlerts.length > 0
-      ? liveAlerts.map((a) => {
-        const guidance = guidanceAlerts.find((g) => g.id === a.id);
-        return {
-          ...a,
-          steps: guidance?.steps || [],
-          whatYouNeed: guidance?.whatYouNeed || [],
-          daysRemaining: a.daysRemaining,
-        };
-      })
+      ? liveAlerts.map((a) => toDisplayAlert(a, guidanceAlerts))
       : active.seeded
         ? []
         : guidanceAlerts;
-  const detailItem = active.seeded && detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
+  const detailItem = detailId ? allAlerts.find((a) => a.id === detailId) || null : null;
+  const detailCompleted = detailItem
+    ? completedIds.includes(detailItem.id) || Boolean((detailItem as BackendAlert).dismissed)
+    : false;
 
   let body: React.ReactNode;
   let crumb: string;
@@ -214,7 +284,9 @@ export function AppShell() {
     body = (
       <StepDetailScreen
         item={detailItem}
-        completed={completedIds.includes(detailItem.id)}
+        completed={detailCompleted}
+        completing={completingId === detailItem.id}
+        error={completionError}
         onBack={() => setDetailId(null)}
         onComplete={completeStep}
       />
@@ -222,7 +294,7 @@ export function AppShell() {
   } else {
     crumb = titles[route];
     if (route === "dashboard")
-      body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} liveAlerts={liveAlerts} liveEstate={liveEstate} />;
+      body = <DashboardScreen key={active.id} estate={active} completedIds={completedIds} onOpenStep={openStep} onGoDocuments={() => navigate("documents")} liveAlerts={liveAlerts} liveEstate={liveEstate} liveAlertsFailed={liveAlertsFailed} />;
     else if (route === "documents") body = <UploadScreen key={active.id} estate={active} onDocumentsChanged={() => refreshEstate(active.id)} />;
     else if (route === "chat") body = <ChatScreen key={active.id} estate={active} />;
     else if (route === "letters") body = <LettersScreen key={active.id} estate={active} />;

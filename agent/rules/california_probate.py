@@ -6,7 +6,7 @@ from typing import Iterable
 
 from dateutil.relativedelta import relativedelta
 
-from schemas.estate import Alert, Asset, Debt, EstateState, Task, UploadedDocument
+from schemas.estate import Alert, AlertTimingStatus, Asset, Debt, EstateState, Task, UploadedDocument
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,8 @@ CALIFORNIA_PROBATE_RULES = [
 RULES_BY_ID = {rule.id: rule for rule in CALIFORNIA_PROBATE_RULES}
 APPRAISABLE_ASSET_TYPES = {"real_estate", "vehicle", "personal_property", "other"}
 SEVERITY_RANK = {"critical": 0, "warning": 1, "info": 2}
+TIMING_RANK = {"blocking": 0, "dated": 1, "prerequisite": 2, "missing_data": 3, "no_deadline": 4}
+TYPE_RANK = {"liability": 0, "deadline": 1, "rule_violation": 2, "missing_doc": 3}
 
 
 def evaluate_rules(estate: EstateState, today: date | None = None) -> list[Alert]:
@@ -65,7 +67,7 @@ def _evaluate_de_140_probate_petition(estate: EstateState, today: date) -> list[
     death_date = _required_date(estate, "dateOfDeath", rule, today)
     if isinstance(death_date, Alert):
         return [death_date]
-    if _has_document(estate, "de-140", "probate petition") or _task_done(estate, "probate petition", "de-140"):
+    if _has_document(estate, "de-140", "probate petition"):
         return []
 
     days_since_death = (today - death_date).days
@@ -74,15 +76,16 @@ def _evaluate_de_140_probate_petition(estate: EstateState, today: date) -> list[
             rule=rule,
             today=today,
             alert_id="alert-de-140-petition",
-            severity="warning",
-            alert_type="missing_doc",
-            title="Probate petition status is missing",
+            severity="critical",
+            alert_type="rule_violation",
+            timing_status="blocking",
+            title="Probate petition (DE-140) is not on file",
             body=(
                 f"Rule de-140 ({rule.title}) is triggered by dateOfDeath={death_date.isoformat()}. "
-                f"No DE-140/probate petition document or completed task is recorded after {days_since_death} days. "
+                f"No DE-140/probate petition document is recorded after {days_since_death} days. "
                 f"Consequence: {rule.consequence}."
             ),
-            action="Confirm the petition filing status and upload the DE-140 or mark the filing task done.",
+            action="File the probate petition (DE-140) or upload the filed petition to establish legal authority.",
             days_remaining=None,
         )
     ]
@@ -103,6 +106,7 @@ def _evaluate_death_certificates(estate: EstateState, today: date) -> list[Alert
             alert_id="alert-death-certificates",
             severity="warning",
             alert_type="missing_doc",
+            timing_status="prerequisite",
             title="Certified death certificates are not recorded",
             body=(
                 f"Rule death-certificates ({rule.title}) is triggered by dateOfDeath={death_date.isoformat()}. "
@@ -134,6 +138,7 @@ def _evaluate_de_160_inventory(estate: EstateState, today: date) -> list[Alert]:
                 alert_id="alert-de-160-inventory",
                 severity="critical",
                 alert_type="deadline",
+                timing_status="dated",
                 title="DE-160 Inventory & Appraisal is blocked",
                 body=(
                     f"Rule de-160 ({rule.title}) is due {due.isoformat()} from appointmentDate={appointment.isoformat()}. "
@@ -152,6 +157,7 @@ def _evaluate_de_160_inventory(estate: EstateState, today: date) -> list[Alert]:
             alert_id="alert-de-160-ready",
             severity=_deadline_severity(due, today),
             alert_type="deadline",
+            timing_status="dated",
             title="DE-160 Inventory & Appraisal filing is pending",
             body=(
                 f"Rule de-160 ({rule.title}) is due {due.isoformat()} from appointmentDate={appointment.isoformat()}. "
@@ -183,6 +189,7 @@ def _evaluate_creditor_notification(estate: EstateState, today: date) -> list[Al
             alert_id="alert-creditor-notice",
             severity="critical",
             alert_type="liability",
+            timing_status="dated",
             title="Known creditors have not been notified",
             body=(
                 f"Rule creditor-notice ({rule.title}; {rule.statute}) is due {due.isoformat()} "
@@ -212,6 +219,7 @@ def _evaluate_newspaper_notice(estate: EstateState, today: date) -> list[Alert]:
             alert_id="alert-newspaper-notice",
             severity=_deadline_severity(due, today),
             alert_type="deadline",
+            timing_status="dated",
             title="Newspaper creditor notice completion is not recorded",
             body=(
                 f"Rule newspaper-notice ({rule.title}; {rule.statute}) runs from "
@@ -242,6 +250,7 @@ def _evaluate_claim_period(estate: EstateState, today: date) -> list[Alert]:
                 alert_id="alert-claim-period-open",
                 severity="info",
                 alert_type="deadline",
+                timing_status="dated",
                 title="Creditor claim period is still open",
                 body=(
                     f"Rule claim-period ({rule.title}) closes {close_date.isoformat()} from "
@@ -258,7 +267,7 @@ def _evaluate_estate_ein(estate: EstateState, today: date) -> list[Alert]:
     rule = RULES_BY_ID["estate-ein"]
     # TODO: Add hasEstateEin and estateBankAccountOpened to EstateState. Documents/tasks are a temporary proxy.
     has_banking_asset = any(asset.type == "bank_account" for asset in _assets(estate))
-    if not has_banking_asset or _has_document(estate, "ein", "ss-4") or _task_done(estate, "ein", "ss-4"):
+    if not has_banking_asset or _has_document(estate, "ein", "ss-4"):
         return []
 
     return [
@@ -268,6 +277,7 @@ def _evaluate_estate_ein(estate: EstateState, today: date) -> list[Alert]:
             alert_id="alert-estate-ein",
             severity="warning",
             alert_type="missing_doc",
+            timing_status="prerequisite",
             title="Estate EIN is not recorded",
             body=(
                 "Rule estate-ein (Estate EIN) is triggered by estate banking activity. "
@@ -296,6 +306,7 @@ def _evaluate_final_1040(estate: EstateState, today: date) -> list[Alert]:
             alert_id="alert-final-1040",
             severity=_deadline_severity(due, today),
             alert_type="deadline",
+            timing_status="dated",
             title="Final personal 1040 is not recorded",
             body=(
                 f"Rule final-1040 ({rule.title}) is due {due.isoformat()} from dateOfDeath={death_date.isoformat()}. "
@@ -327,6 +338,7 @@ def _evaluate_form_1041(estate: EstateState, today: date) -> list[Alert]:
             alert_id="alert-form-1041",
             severity=_deadline_severity(due, today),
             alert_type="deadline",
+            timing_status="dated",
             title="Estate Form 1041 is not recorded",
             body=(
                 f"Rule form-1041 ({rule.title}) is due {due.isoformat()} because estateIncome={estate_income}. "
@@ -385,6 +397,7 @@ def _missing_data_alert(
         alert_id=f"alert-{rule.id}-missing-{_slug(field_name)}",
         severity="warning",
         alert_type="missing_doc",
+        timing_status="missing_data",
         title=f"Missing data blocks {rule.title}",
         body=(
             f"Rule {rule.id} ({rule.title}) requires {field_name} to evaluate deterministically."
@@ -402,11 +415,17 @@ def _alert(
     alert_id: str,
     severity: str,
     alert_type: str,
+    timing_status: AlertTimingStatus,
     title: str,
     body: str,
     action: str,
     days_remaining: int | None,
 ) -> Alert:
+    if timing_status == "dated" and days_remaining is None:
+        timing_status = "no_deadline"
+    elif timing_status != "dated" and days_remaining is not None:
+        timing_status = "dated"
+
     return Alert(
         id=alert_id,
         severity=severity,
@@ -415,14 +434,39 @@ def _alert(
         body=body,
         rule=f"{rule.id}: {rule.title} ({rule.statute})",
         daysRemaining=days_remaining,
+        timingStatus=timing_status,
         actionRequired=action,
         createdAt=f"{today.isoformat()}T00:00:00+00:00",
     )
 
 
-def _alert_sort_key(alert: Alert) -> tuple[int, int, str]:
-    missing_due = 999999 if alert.daysRemaining is None else alert.daysRemaining
-    return (SEVERITY_RANK[alert.severity], missing_due, alert.id)
+def _alert_sort_key(alert: Alert) -> tuple[int, int, int, int, str]:
+    days_remaining = 999999 if alert.daysRemaining is None else alert.daysRemaining
+    return (
+        SEVERITY_RANK[alert.severity],
+        TIMING_RANK.get(alert.timingStatus, 4),
+        TYPE_RANK.get(alert.type, 3),
+        days_remaining,
+        alert.id,
+    )
+
+
+def derive_alert_timing_status(alert: Alert) -> AlertTimingStatus:
+    if alert.daysRemaining is not None:
+        return "dated"
+    alert_id = alert.id.casefold()
+    title = alert.title.casefold()
+    if "-missing-" in alert_id or "missing data" in title:
+        return "missing_data"
+    if alert_id.startswith("alert-de-140") or "blocking" in title or "legal authority" in alert.body.casefold():
+        return "blocking"
+    if alert_id.startswith("alert-estate-ein") or alert_id.startswith("alert-death-certificates"):
+        return "prerequisite"
+    return "no_deadline"
+
+
+def alert_sort_key(alert: Alert) -> tuple[int, int, int, int, str]:
+    return _alert_sort_key(alert)
 
 
 def _deadline_severity(due: date, today: date) -> str:

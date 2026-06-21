@@ -33,6 +33,11 @@ class DeadlineAgentRequest(ContractModel):
     estateId: str = "demo-milligan"
 
 
+class CompleteAlertRequest(ContractModel):
+    estateId: str = "demo-milligan"
+    alertId: str
+
+
 class ChatRequest(ContractModel):
     estateId: str = "demo-milligan"
     message: str

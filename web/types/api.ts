@@ -27,6 +27,11 @@ export interface DeadlineAgentResponse {
   alerts: Alert[];
 }
 
+export interface CompleteAlertRequest {
+  estateId: string;
+  alertId: string;
+}
+
 export interface ChatRequest {
   estateId: string;
   message: string;

@@ -13,7 +13,7 @@ load_dotenv(".env")  # must run before any module that reads env vars at import 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
-from agents.deadline_agent import run_deadline_agent
+from agents.deadline_agent import mark_alert_complete, run_deadline_agent
 from auth.security import hash_password, new_session_token, verify_password
 from documents.pdf_reader import extract_text
 from documents.router import parse_document_text
@@ -22,7 +22,7 @@ from llm.embeddings import embed_query, embed_texts
 from observability.arize import get_tracing_status, init_tracing, set_span_attribute, set_span_error, span
 from prompts.letters import build_letter_fallback, build_letter_prompt, normalize_letter_type
 from prompts.system import build_chat_prompt
-from schemas.api import AnyDocumentExtraction, ChatRequest, DeadlineAgentRequest, GenerateLetterRequest, ParseDocumentResponse
+from schemas.api import AnyDocumentExtraction, ChatRequest, CompleteAlertRequest, DeadlineAgentRequest, EstateResponse, GenerateLetterRequest, ParseDocumentResponse
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Asset, EstateState, Executor, UploadedDocument
@@ -182,6 +182,16 @@ async def deadline_agent(request: DeadlineAgentRequest) -> dict[str, object]:
     with span("route.deadline_agent", estate_id=request.estateId, action_type="deadline_agent_run"):
         alerts = await run_deadline_agent(request.estateId)
         return {"estateId": request.estateId, "alerts": alerts}
+
+
+@app.post("/complete-alert", response_model=EstateResponse)
+async def complete_alert(request: CompleteAlertRequest) -> EstateResponse:
+    with span("route.complete_alert", estate_id=request.estateId, action_type="complete_alert", alert_id=request.alertId):
+        try:
+            estate = mark_alert_complete(request.estateId, request.alertId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return EstateResponse(estate=estate)
 
 
 ACCEPTED_CONTENT_TYPES = {

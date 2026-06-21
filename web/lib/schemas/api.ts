@@ -15,6 +15,11 @@ export const deadlineAgentRequestSchema = z.object({
   estateId: z.string(),
 }).strict();
 
+export const completeAlertRequestSchema = z.object({
+  estateId: z.string(),
+  alertId: z.string(),
+}).strict();
+
 export const chatRequestSchema = z.object({
   estateId: z.string(),
   message: z.string(),
