@@ -48,7 +48,7 @@ from schemas.api import (
     ParseDocumentsResponse,
     SaveLetterRequest,
 )
-from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
+from schemas.auth import AuthResponse, CreateEstateRequest, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.documents import BankStatementExtraction, CreditorNoticeExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Alert, Asset, EstateState, Executor, SavedLetter, UploadedDocument, utc_now_iso
 from store.redis_client import (
@@ -195,7 +195,30 @@ async def seed() -> dict[str, object]:
 
 @app.get("/estate/{estate_id}")
 async def estate(estate_id: str) -> dict[str, object]:
-    return {"estate": get_estate_state(estate_id)}
+    try:
+        return {"estate": get_estate_state(estate_id)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Estate not found") from exc
+
+
+@app.post("/estates", response_model=EstateResponse)
+async def create_estate(request: CreateEstateRequest, user: User = Depends(require_user)) -> EstateResponse:
+    """Persist a new estate and attach it to the authenticated user."""
+    estate_state = EstateState(
+        id=f"est-{uuid.uuid4().hex[:12]}",
+        deceasedName=request.deceasedName.strip(),
+        dateOfDeath=request.dateOfDeath or date.today().isoformat(),
+        appointmentDate=date.today().isoformat(),
+        state="california",
+        county=(request.county or "").strip() or None,
+        executor=Executor(name=user.name, email=user.email),
+        phase=1,
+    )
+    estate_state = set_estate_state(estate_state)
+    if estate_state.id not in user.estateIds:
+        user.estateIds.append(estate_state.id)
+        update_user(user)
+    return EstateResponse(estate=estate_state)
 
 
 @app.get("/document/{estate_id}/{doc_id}")

@@ -3,32 +3,42 @@
 import React from "react";
 import { Input, Select, Button } from "@/components/ds";
 import { ROLE_OPTIONS, RELATIONSHIP_OPTIONS, US_STATES } from "@/lib/design/data";
-import type { EstateProfile } from "@/lib/design/data";
+import type { CreateEstateRequest } from "@/types";
 
 // Modal form to add a new estate the executor will administer.
 type Props = {
   open: boolean;
   onCancel: () => void;
-  onCreate: (estate: EstateProfile) => void;
+  onCreate: (estate: CreateEstateRequest) => Promise<void>;
 };
 
 export function CreateEstateModal({ open, onCancel, onCreate }: Props) {
   const [f, setF] = React.useState({ deceasedName: "", dateOfDeath: "", relationship: "Parent", role: "Executor", state: "California", county: "" });
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((c) => ({ ...c, [k]: e.target.value }));
 
-  React.useEffect(() => { if (open) setF({ deceasedName: "", dateOfDeath: "", relationship: "Parent", role: "Executor", state: "California", county: "" }); }, [open]);
+  React.useEffect(() => { if (open) { setF({ deceasedName: "", dateOfDeath: "", relationship: "Parent", role: "Executor", state: "California", county: "" }); setSubmitting(false); setError(null); } }, [open]);
   if (!open) return null;
 
   const valid = f.deceasedName.trim().length > 1;
-  function submit() {
-    if (!valid) return;
-    onCreate({
-      id: "est-" + Date.now(),
+  async function submit() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onCreate({
       deceasedName: f.deceasedName.trim(),
-      role: f.role, relationship: f.relationship,
-      state: f.state, county: f.county.trim() || "Not set",
-      phase: 1, seeded: false, hasDocuments: false,
-    });
+        dateOfDeath: f.dateOfDeath || null,
+        role: f.role,
+        relationship: f.relationship,
+        state: f.state,
+        county: f.county.trim() || null,
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "We couldn't create that estate.");
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -53,8 +63,9 @@ export function CreateEstateModal({ open, onCancel, onCreate }: Props) {
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)", padding: "var(--space-4) var(--space-5)", borderTop: "1px solid var(--border-subtle)", background: "var(--bg-raised)" }}>
+          {error ? <span role="alert" style={{ marginRight: "auto", alignSelf: "center", color: "var(--critical-text)", fontSize: "var(--text-sm)" }}>{error}</span> : null}
           <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" disabled={!valid} onClick={submit}>Create estate</Button>
+          <Button variant="primary" disabled={!valid || submitting} onClick={() => { void submit(); }}>{submitting ? "Creating..." : "Create estate"}</Button>
         </div>
       </div>
     </div>

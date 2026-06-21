@@ -20,7 +20,8 @@ from store.redis_client import get_estate_state, set_estate_state
 LOGGER = logging.getLogger(__name__)
 REQUIRED_DEMO_ALERT_IDS = {"alert-creditor-notice", "alert-de-160-inventory"}
 MAX_TOOL_ROUNDS = 5
-DEADLINE_AGENT_MAX_TOKENS = 8192
+DEADLINE_AGENT_MAX_TOKENS = 12288
+DEADLINE_ALERT_SUBMISSION_TOOL_NAME = "submit_deadline_alerts"
 
 
 DEADLINE_AGENT_SYSTEM_PROMPT = """
@@ -67,6 +68,23 @@ DEADLINE_AGENT_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+DEADLINE_ALERT_SUBMISSION_TOOL: dict[str, Any] = {
+    "name": DEADLINE_ALERT_SUBMISSION_TOOL_NAME,
+    "description": "Submit the final ranked DeadlineAgent alerts in the required schema.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "alerts": {
+                "type": "array",
+                "items": Alert.model_json_schema(),
+                "maxItems": 5,
+            }
+        },
+        "required": ["alerts"],
+        "additionalProperties": False,
+    },
+}
+
 
 async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
     """Run Claude DeadlineAgent with deterministic rule fallback."""
@@ -75,6 +93,7 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
     fallback_used = False
     fallback_reason = ""
     claude_tool_calls = 0
+    json_repair_used = False
 
     with span(
         "deadline_agent.run",
@@ -104,6 +123,7 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
                 raise MissingAnthropicKeyError("ANTHROPIC_API_KEY is not set.")
             claude_result = await _run_claude_tool_loop(estate, deterministic_alerts)
             claude_tool_calls = claude_result.tool_calls
+            json_repair_used = claude_result.json_repair_used
             final_alerts = _validated_claude_alerts_or_raise(claude_result.alerts, deterministic_alerts)
             set_span_attribute(current_span, "canonical_alert_source", "deterministic_plus_claude_copy")
         except Exception as exc:
@@ -127,6 +147,7 @@ async def run_deadline_agent(estate_id: str = "demo-milligan") -> list[Alert]:
         set_span_attribute(current_span, "fallback_used", fallback_used)
         set_span_attribute(current_span, "fallback_reason", fallback_reason)
         set_span_attribute(current_span, "claude_tool_calls", claude_tool_calls)
+        set_span_attribute(current_span, "json_repair_used", json_repair_used)
         if _capture_evaluation_context():
             set_span_attribute(
                 current_span,
@@ -148,9 +169,10 @@ class ClaudeToolUseRequiredError(RuntimeError):
 
 
 class ClaudeAgentResult:
-    def __init__(self, alerts: list[Alert], tool_calls: int) -> None:
+    def __init__(self, alerts: list[Alert], tool_calls: int, json_repair_used: bool = False) -> None:
         self.alerts = alerts
         self.tool_calls = tool_calls
+        self.json_repair_used = json_repair_used
 
 
 def _capture_evaluation_context() -> bool:
@@ -171,6 +193,7 @@ async def _run_claude_tool_loop(estate: EstateState, deterministic_alerts: list[
     ]
     tool_call_count = 0
     final_json_nudge_sent = False
+    json_repair_used = False
 
     for _ in range(MAX_TOOL_ROUNDS):
         response = await create_reasoning_message(
@@ -191,7 +214,23 @@ async def _run_claude_tool_loop(estate: EstateState, deterministic_alerts: list[
             LOGGER.debug("CLAUDE FINAL BLOCKS: %s", json.dumps(blocks, indent=2, default=str))
             LOGGER.debug("CLAUDE FINAL TEXT: %r", text)
 
-            return ClaudeAgentResult(alerts=_parse_alerts_from_text(text), tool_calls=tool_call_count)
+            try:
+                parsed_alerts = _parse_alerts_from_text(text)
+            except ValueError:
+                json_repair_used = True
+                LOGGER.warning(
+                    "Claude returned malformed DeadlineAgent JSON; requesting one schema-guided repair "
+                    "(stop_reason=%s, output_chars=%s).",
+                    getattr(response, "stop_reason", "unknown"),
+                    len(text),
+                )
+                parsed_alerts = await _repair_alert_output(text, deterministic_alerts)
+                tool_call_count += 1
+            return ClaudeAgentResult(
+                alerts=parsed_alerts,
+                tool_calls=tool_call_count,
+                json_repair_used=json_repair_used,
+            )
 
         tool_results = []
         for tool_use in tool_uses:
@@ -221,6 +260,49 @@ async def _run_claude_tool_loop(estate: EstateState, deterministic_alerts: list[
             final_json_nudge_sent = True
 
     raise RuntimeError("Claude DeadlineAgent exceeded max tool rounds.")
+
+
+async def _repair_alert_output(text: str, deterministic_alerts: list[Alert]) -> list[Alert]:
+    """Convert malformed final text into validated alerts with one forced tool call."""
+    canonical_alerts = [alert.model_dump(mode="json") for alert in deterministic_alerts]
+    response = await create_reasoning_message(
+        system=(
+            "You are repairing the serialization of a DeadlineAgent response. "
+            "Do not add new facts, deadlines, rules, or alert ids. Preserve the canonical rule fields. "
+            "Use the submit_deadline_alerts tool exactly once."
+        ),
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "The previous response was not valid Alert JSON. Convert it to the required schema. "
+                    "Use the canonical deterministic alerts to recover any missing or truncated fields.\n\n"
+                    f"CANONICAL ALERTS:\n{json.dumps(canonical_alerts, sort_keys=True)}\n\n"
+                    f"MALFORMED RESPONSE:\n{text}"
+                ),
+            }
+        ],
+        tools=[DEADLINE_ALERT_SUBMISSION_TOOL],
+        tool_choice={"type": "tool", "name": DEADLINE_ALERT_SUBMISSION_TOOL_NAME},
+        max_tokens=DEADLINE_AGENT_MAX_TOKENS,
+    )
+    blocks = [_content_block_to_dict(block) for block in getattr(response, "content", [])]
+    submission = next(
+        (
+            block
+            for block in blocks
+            if block.get("type") == "tool_use"
+            and block.get("name") == DEADLINE_ALERT_SUBMISSION_TOOL_NAME
+        ),
+        None,
+    )
+    if submission is None:
+        raise ValueError("Claude repair did not submit DeadlineAgent alerts.")
+    payload = submission.get("input") or {}
+    raw_alerts = payload.get("alerts") if isinstance(payload, dict) else None
+    if not isinstance(raw_alerts, list):
+        raise ValueError("Claude repair returned an invalid alerts payload.")
+    return [Alert.model_validate(raw_alert) for raw_alert in raw_alerts]
 
 
 def _run_deadline_agent_tool(name: str, input_data: dict[str, Any], estate: EstateState) -> dict[str, Any]:

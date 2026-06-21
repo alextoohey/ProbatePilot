@@ -54,6 +54,7 @@ async def create_reasoning_message(
     system: str,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
+    tool_choice: dict[str, Any] | None = None,
     max_tokens: int = 4096,
 ) -> Any:
     """Call Claude for reasoning/tool use.
@@ -73,12 +74,17 @@ async def create_reasoning_message(
         messages_count=len(messages),
         prompt_length=len(system),
     ):
+        request: dict[str, Any] = {
+            "model": REASONING_MODEL,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": messages,
+            "tools": tools or None,
+        }
+        if tool_choice is not None:
+            request["tool_choice"] = tool_choice
         return await client.messages.create(
-            model=REASONING_MODEL,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            tools=tools or None,
+            **request,
         )
 
 

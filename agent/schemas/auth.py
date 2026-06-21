@@ -73,6 +73,15 @@ class LoginRequest(ContractModel):
     password: str
 
 
+class CreateEstateRequest(ContractModel):
+    deceasedName: str = Field(min_length=1)
+    dateOfDeath: str | None = None
+    relationship: str | None = None
+    role: str | None = "Executor"
+    state: str | None = "California"
+    county: str | None = None
+
+
 class AuthResponse(ContractModel):
     """Returned by register/login. ``token`` is the opaque session token the
     web layer stores in an httpOnly cookie."""

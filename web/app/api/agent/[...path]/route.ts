@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { withSentrySpan } from "@/lib/sentry";
+import { SESSION_COOKIE } from "@/lib/authCookie";
 
 const AGENT_API_URL = process.env.AGENT_API_URL ?? "http://localhost:8000";
 
@@ -11,6 +12,8 @@ async function proxy(request: NextRequest, { params }: { params: { path: string[
     const headers = new Headers(request.headers);
     headers.delete("host");
     headers.delete("content-length");
+    const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
+    if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
 
     const response = await fetch(url, {
       method,

@@ -113,6 +113,60 @@ def test_malformed_claude_output_falls_back_safely(monkeypatch) -> None:
     assert "alert-de-160-inventory" in alert_ids
 
 
+def test_malformed_claude_json_is_repaired_with_forced_submission_tool(monkeypatch) -> None:
+    captured = capture_deadline_agent_spans(monkeypatch)
+    payload = deterministic_alert_payload()
+    requests: list[dict[str, object]] = []
+    responses = [
+        SimpleNamespace(
+            content=[
+                {
+                    "type": "tool_use",
+                    "id": "toolu_rules",
+                    "name": "evaluate_all_probate_rules",
+                    "input": {},
+                }
+            ]
+        ),
+        SimpleNamespace(
+            stop_reason="max_tokens",
+            content=[
+                {
+                    "type": "text",
+                    "text": '{"alerts":[{"steps":["Go to irs.gov and apply for an EIN"]}',
+                }
+            ],
+        ),
+        SimpleNamespace(
+            content=[
+                {
+                    "type": "tool_use",
+                    "id": "toolu_submit",
+                    "name": "submit_deadline_alerts",
+                    "input": payload,
+                }
+            ]
+        ),
+    ]
+
+    async def tool_then_repaired_message(**kwargs):
+        requests.append(kwargs)
+        return responses.pop(0)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(deadline_agent, "create_reasoning_message", tool_then_repaired_message)
+    seed_demo_estate()
+
+    alerts = asyncio.run(run_deadline_agent("demo-milligan"))
+
+    assert "alert-creditor-notice" in {alert.id for alert in alerts}
+    assert requests[-1]["tool_choice"] == {"type": "tool", "name": "submit_deadline_alerts"}
+    assert requests[-1]["max_tokens"] == 12288
+    assert captured[0].attributes["fallback_used"] is False
+    assert captured[0].attributes["claude_tool_calls"] == 2
+    assert captured[0].attributes["json_repair_used"] is True
+
+
 def test_parse_alerts_accepts_markdown_json_fence() -> None:
     text = f"```json\n{deterministic_alert_json()}\n```"
 

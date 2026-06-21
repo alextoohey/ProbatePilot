@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  createEstate,
   generateLetter,
   getEstate,
   getMe,
@@ -25,6 +26,8 @@ const alert: Alert = {
   rule: "CA Probate Code 9051",
   daysRemaining: 9,
   actionRequired: "Send certified notices.",
+  whatYouNeed: [],
+  steps: [],
   createdAt: "2026-06-20T00:00:00.000Z",
   dismissed: false,
 };
@@ -60,6 +63,7 @@ const estate: EstateState = {
   ],
   tasks: [],
   alerts: [alert],
+  letters: [],
   phase: 2,
   createdAt: "2026-06-20T00:00:00.000Z",
   updatedAt: "2026-06-20T00:00:00.000Z",
@@ -148,6 +152,27 @@ async function main() {
   assert.equal(calls[0].input, "/api/auth/me");
   assert.equal(calls[0].init?.cache, "no-store");
   assert.equal(me?.estates[0].id, "demo-milligan");
+
+  resetFetch([{ estate }]);
+  const createdEstate = await createEstate({
+    deceasedName: "Gloria Reyes",
+    dateOfDeath: "2026-05-14",
+    relationship: "Parent",
+    role: "Executor",
+    state: "California",
+    county: "Alameda",
+  });
+  assert.equal(calls[0].input, "/api/agent/estates");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+    deceasedName: "Gloria Reyes",
+    dateOfDeath: "2026-05-14",
+    relationship: "Parent",
+    role: "Executor",
+    state: "California",
+    county: "Alameda",
+  });
+  assert.equal(createdEstate.id, "demo-milligan");
 
   resetFetch([{}]);
   await logout();

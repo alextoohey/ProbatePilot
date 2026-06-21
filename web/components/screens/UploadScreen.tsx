@@ -141,7 +141,7 @@ function ParseProgress({
           <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fileName || "Document"}
           </p>
-          <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{parseProgressLabel(clamped)}{batchLabel}</p>
+          <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{parseProgressLabel(clamped)}</p>
         </div>
         <span style={{ flex: "none", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)" }}>{clamped}%</span>
       </div>

@@ -25,6 +25,8 @@ const alert: Alert = {
   rule: "CA Probate Code inventory",
   daysRemaining: 9,
   actionRequired: "Prepare inventory and appraisal.",
+  whatYouNeed: [],
+  steps: [],
   createdAt: "2026-06-20T00:00:00.000Z",
   dismissed: false,
 };
@@ -90,6 +92,7 @@ const estate: EstateState = {
     },
   ],
   alerts: [alert],
+  letters: [],
   phase: 2,
   createdAt: "2026-06-20T00:00:00.000Z",
   updatedAt: "2026-06-20T00:00:00.000Z",

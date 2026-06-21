@@ -30,6 +30,15 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface CreateEstateRequest {
+  deceasedName: string;
+  dateOfDeath?: string | null;
+  relationship?: string | null;
+  role?: string | null;
+  state?: string | null;
+  county?: string | null;
+}
+
 export interface AuthResponse {
   token: string;
   user: PublicUser;

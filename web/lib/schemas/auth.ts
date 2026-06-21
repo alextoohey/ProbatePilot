@@ -31,6 +31,15 @@ export const loginRequestSchema = z.object({
   password: z.string().min(1),
 }).strict();
 
+export const createEstateRequestSchema = z.object({
+  deceasedName: z.string().min(1),
+  dateOfDeath: z.string().nullable().optional(),
+  relationship: z.string().nullable().optional(),
+  role: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  county: z.string().nullable().optional(),
+}).strict();
+
 export const authResponseSchema = z.object({
   token: z.string(),
   user: publicUserSchema,

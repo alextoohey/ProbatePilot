@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from main import app
-from store.redis_client import get_session_user_id, get_user_by_email
+from store.redis_client import get_estate_state, get_session_user_id, get_user_by_email
 
 
 def _registration_payload(email: str = "dana@example.com") -> dict[str, object]:
@@ -79,3 +79,46 @@ def test_me_rejects_missing_or_malformed_authorization() -> None:
 
     assert client.get("/auth/me").status_code == 401
     assert client.get("/auth/me", headers={"authorization": "Token nope"}).status_code == 401
+
+
+def test_authenticated_user_can_create_and_reload_an_additional_estate() -> None:
+    client = TestClient(app)
+    registration = client.post("/auth/register", json=_registration_payload("multi@example.com"))
+    token = registration.json()["token"]
+    headers = {"authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/estates",
+        headers=headers,
+        json={
+            "deceasedName": "Gloria Reyes",
+            "dateOfDeath": "2026-05-14",
+            "relationship": "Parent",
+            "role": "Executor",
+            "state": "California",
+            "county": "Alameda",
+        },
+    )
+
+    assert created.status_code == 200
+    estate = created.json()["estate"]
+    assert estate["id"].startswith("est-")
+    assert estate["deceasedName"] == "Gloria Reyes"
+    assert estate["county"] == "Alameda"
+    assert get_estate_state(estate["id"]).deceasedName == "Gloria Reyes"
+
+    me = client.get("/auth/me", headers=headers)
+    assert estate["id"] in me.json()["user"]["estateIds"]
+    assert estate["id"] in {item["id"] for item in me.json()["estates"]}
+
+    loaded = client.get(f"/estate/{estate['id']}")
+    assert loaded.status_code == 200
+    assert loaded.json()["estate"]["deceasedName"] == "Gloria Reyes"
+
+
+def test_create_estate_requires_authentication_and_missing_estates_return_404() -> None:
+    client = TestClient(app)
+
+    unauthorized = client.post("/estates", json={"deceasedName": "Gloria Reyes"})
+    assert unauthorized.status_code == 401
+    assert client.get("/estate/est-does-not-exist").status_code == 404

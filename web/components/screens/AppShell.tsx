@@ -10,8 +10,8 @@ import {
   type ExecutorProfile,
   type Alert as DesignAlert,
 } from "@/lib/design/data";
-import { completeAlert, getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
-import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
+import { completeAlert, createEstate as apiCreateEstate, getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
+import type { Alert as BackendAlert, CreateEstateRequest, EstateState, PublicUser } from "@/types";
 import { Sidebar } from "./Sidebar";
 import { DashboardScreen } from "./DashboardScreen";
 import { StepDetailScreen } from "./StepDetailScreen";
@@ -292,9 +292,23 @@ export function AppShell() {
       setLiveAlertsFailed(true);
     }
   }
-  function createEstate(est: EstateProfile) {
-    setEstates((c) => [...c, est]);
-    setActiveEstateId(est.id);
+  async function createEstate(request: CreateEstateRequest) {
+    const estate = await apiCreateEstate(request);
+    const estateProfile: EstateProfile = {
+      id: estate.id,
+      deceasedName: estate.deceasedName,
+      role: request.role || "Executor",
+      relationship: request.relationship || profile.relationship,
+      state: request.state || "California",
+      county: estate.county || "Not set",
+      phase: estate.phase,
+      seeded: false,
+      hasDocuments: estate.documents.length > 0,
+    };
+    setEstates((current) => [...current.filter((item) => item.id !== estateProfile.id), estateProfile]);
+    setLiveEstate(estate);
+    setLiveAlerts(estate.alerts);
+    setActiveEstateId(estate.id);
     setShowCreate(false);
     setDetailId(null);
     setRoute("dashboard");

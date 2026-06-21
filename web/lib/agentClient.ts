@@ -17,13 +17,14 @@ import {
   parseDocumentsResponseSchema,
   seedResponseSchema,
 } from "./schemas/api";
-import { meResponseSchema, publicUserSchema } from "./schemas/auth";
+import { createEstateRequestSchema, meResponseSchema, publicUserSchema } from "./schemas/auth";
 import { z } from "zod";
 import type {
   Alert,
   ChatMessage,
   ChatRequest,
   ChatSession,
+  CreateEstateRequest,
   EstateState,
   GenerateLetterResponse,
   LoginRequest,
@@ -89,6 +90,18 @@ export async function getMe(): Promise<MeResponse | null> {
   if (response.status === 401) return null;
   if (!response.ok) throw new AuthError(await readError(response, "Could not load your account."), response.status);
   return meResponseSchema.parse(await response.json());
+}
+
+export async function createEstate(request: CreateEstateRequest): Promise<EstateState> {
+  const response = await fetch("/api/agent/estates", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(createEstateRequestSchema.parse(request)),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, "We couldn't create that estate."));
+  }
+  return estateResponseSchema.parse(await response.json()).estate;
 }
 
 export async function seedEstate(): Promise<{ estate: EstateState; alerts: Alert[] }> {
