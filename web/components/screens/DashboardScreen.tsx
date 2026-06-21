@@ -3,7 +3,7 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, StatBlock, Alert, Badge, ProgressSteps, Button, Avatar } from "@/components/ds";
-import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary } from "@/lib/design/data";
+import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary, type Alert as DesignAlert } from "@/lib/design/data";
 import { BeneficiaryModal } from "./BeneficiaryModal";
 import type { Alert as BackendAlert, EstateState } from "@/types";
 
@@ -12,11 +12,12 @@ type Props = {
   completedIds?: string[];
   onOpenStep?: (id: string) => void;
   onGoDocuments?: () => void;
-  liveAlerts?: BackendAlert[];
+  liveAlerts?: BackendAlert[] | null;
   liveEstate?: EstateState | null;
+  liveAlertsFailed?: boolean;
 };
 
-export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments, liveAlerts, liveEstate }: Props) {
+export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments, liveAlerts = null, liveEstate, liveAlertsFailed = false }: Props) {
   const E = DEMO_ESTATE;
   const fmt = fmtMoney;
   const I = ExecutorIcons;
@@ -59,10 +60,23 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
 
   const done = new Set(completedIds);
 
-  const usingLive = liveAlerts && liveAlerts.length > 0;
-  const allAlerts = usingLive
-    ? liveAlerts!.map((a) => ({ ...a, steps: [] as string[], whatYouNeed: [] as string[], daysRemaining: a.daysRemaining ?? 0 }))
-    : [...E.alerts, ...(E.alertsNext || [])];
+  const guidanceAlerts = [...E.alerts, ...(E.alertsNext || [])];
+  const liveAlertsLoading = estate?.seeded && liveAlerts === null;
+  const allAlerts: DesignAlert[] = liveAlerts === null
+    ? []
+    : liveAlerts.length > 0
+      ? liveAlerts.map((a) => {
+        const guidance = guidanceAlerts.find((g) => g.id === a.id);
+        return {
+          ...a,
+          steps: guidance?.steps || [],
+          whatYouNeed: guidance?.whatYouNeed || [],
+          daysRemaining: a.daysRemaining ?? undefined,
+        };
+      })
+      : estate?.seeded
+        ? []
+        : guidanceAlerts;
   const open = allAlerts.filter((a) => !done.has(a.id) && !(a as BackendAlert).dismissed);
   const completed = allAlerts.filter((a) => done.has(a.id) || !!(a as BackendAlert).dismissed);
   const justAdvanced = false;
@@ -130,14 +144,30 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
           </div>
         ) : null}
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
-          {open.map((a) => (
-            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining}
+          {liveAlertsLoading ? (
+            <Card tint padded>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)" }}>
+                <I.Bell size={18} color="var(--text-subtle)" />
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Checking California probate deadlines...</span>
+              </div>
+            </Card>
+          ) : null}
+          {liveAlertsFailed ? (
+            <Card tint padded>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--warning-text)" }}>
+                <I.Bell size={18} color="var(--warning-accent)" />
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>DeadlineAgent alerts could not be loaded. Start the Python agent and refresh.</span>
+              </div>
+            </Card>
+          ) : null}
+          {!liveAlertsLoading && !liveAlertsFailed && open.map((a) => (
+            <Alert key={a.id} severity={a.severity} title={a.title} daysRemaining={a.daysRemaining ?? undefined}
               actionRequired={a.actionRequired}
               onOpen={() => onOpenStep && onOpenStep(a.id)} actionLabel="View steps">
               {a.body}
             </Alert>
           ))}
-          {open.length === 0 ? (
+          {!liveAlertsLoading && !liveAlertsFailed && open.length === 0 ? (
             <Card tint padded>
               <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--success-text)" }}>
                 <I.CheckCircle size={20} color="var(--success-accent)" />
