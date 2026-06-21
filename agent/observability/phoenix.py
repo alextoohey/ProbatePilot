@@ -37,6 +37,11 @@ except ImportError:  # pragma: no cover - optional local dependency
     AnthropicInstrumentor = None
 
 try:
+    from openinference.instrumentation import TraceConfig
+except ImportError:  # pragma: no cover - optional local dependency
+    TraceConfig = None
+
+try:
     from openinference.instrumentation.openai import OpenAIInstrumentor
 except ImportError:  # pragma: no cover - optional local dependency
     OpenAIInstrumentor = None
@@ -51,6 +56,7 @@ def get_tracing_status() -> dict[str, object]:
         "collectorEndpoint": _collector_endpoint(),
         "projectName": _project_name(),
         "apiKeyConfigured": bool(os.getenv("PHOENIX_API_KEY")),
+        "llmContentCaptured": _capture_llm_content(),
         "provider": "phoenix",
     }
 
@@ -82,28 +88,66 @@ def init_tracing() -> None:
         LOGGER.exception("Failed to initialize Phoenix tracing.")
         return
 
+    trace_config = _trace_config()
     _ANTHROPIC_INSTRUMENTED = _instrument(
         AnthropicInstrumentor,
         provider,
         "Anthropic",
+        trace_config,
     )
     _OPENAI_INSTRUMENTED = _instrument(
         OpenAIInstrumentor,
         provider,
         "OpenAI",
+        trace_config,
     )
 
 
-def _instrument(instrumentor_type: Any, provider: Any, provider_name: str) -> bool:
+def _instrument(
+    instrumentor_type: Any,
+    provider: Any,
+    provider_name: str,
+    trace_config: Any | None,
+) -> bool:
     if instrumentor_type is None:
         LOGGER.info("%s OpenInference instrumentor is not installed.", provider_name)
         return False
     try:
-        instrumentor_type().instrument(tracer_provider=provider)
+        kwargs: dict[str, Any] = {"tracer_provider": provider}
+        if trace_config is not None:
+            kwargs["config"] = trace_config
+        instrumentor_type().instrument(**kwargs)
         return True
     except Exception:  # pragma: no cover - defensive
         LOGGER.exception("Failed to instrument %s for Phoenix tracing.", provider_name)
         return False
+
+
+def _capture_llm_content() -> bool:
+    """Whether prompt and completion content should be exported to Phoenix."""
+    return os.getenv("PHOENIX_CAPTURE_LLM_CONTENT", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _trace_config() -> Any | None:
+    """Build an explicit config so ambient OPENINFERENCE_HIDE_* flags cannot drift."""
+    if TraceConfig is None:
+        return None
+
+    hide_content = not _capture_llm_content()
+    return TraceConfig(
+        hide_inputs=hide_content,
+        hide_outputs=hide_content,
+        hide_input_messages=hide_content,
+        hide_output_messages=hide_content,
+        hide_input_text=hide_content,
+        hide_output_text=hide_content,
+        hide_llm_tools=hide_content,
+    )
 
 
 @contextmanager

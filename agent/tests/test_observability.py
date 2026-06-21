@@ -25,7 +25,7 @@ class CapturedSpan:
 
 def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) -> None:
     register_args: dict[str, object] = {}
-    instrumentation_calls: list[object] = []
+    instrumentation_calls: list[dict[str, object]] = []
 
     class FakeProvider:
         def get_tracer(self, name: str) -> object:
@@ -34,7 +34,7 @@ def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) 
 
     class FakeInstrumentor:
         def instrument(self, **kwargs: object) -> None:
-            instrumentation_calls.append(kwargs["tracer_provider"])
+            instrumentation_calls.append(kwargs)
 
     def fake_register(**kwargs: object) -> FakeProvider:
         register_args.update(kwargs)
@@ -48,6 +48,12 @@ def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) 
     monkeypatch.setattr(phoenix, "OpenAIInstrumentor", FakeInstrumentor)
     monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "https://app.phoenix.arize.com/s/test-space")
     monkeypatch.setenv("PHOENIX_PROJECT_NAME", "executor-ai-test")
+    monkeypatch.setenv("PHOENIX_CAPTURE_LLM_CONTENT", "true")
+    # Explicit Phoenix configuration must win over stale shell/deployment flags.
+    monkeypatch.setenv("OPENINFERENCE_HIDE_INPUTS", "true")
+    monkeypatch.setenv("OPENINFERENCE_HIDE_OUTPUTS", "true")
+    monkeypatch.setenv("OPENINFERENCE_HIDE_INPUT_MESSAGES", "true")
+    monkeypatch.setenv("OPENINFERENCE_HIDE_OUTPUT_MESSAGES", "true")
 
     phoenix.init_tracing()
 
@@ -56,7 +62,24 @@ def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) 
     assert register_args["protocol"] == "http/protobuf"
     assert register_args["tracer_name"] == "executor-ai.agent"
     assert len(instrumentation_calls) == 2
+    for call in instrumentation_calls:
+        assert call["config"].hide_inputs is False
+        assert call["config"].hide_outputs is False
+        assert call["config"].hide_input_messages is False
+        assert call["config"].hide_output_messages is False
     assert phoenix.get_tracing_status()["provider"] == "phoenix"
+    assert phoenix.get_tracing_status()["llmContentCaptured"] is True
+
+
+def test_trace_config_can_redact_llm_content(monkeypatch) -> None:
+    monkeypatch.setenv("PHOENIX_CAPTURE_LLM_CONTENT", "false")
+
+    config = phoenix._trace_config()
+
+    assert config.hide_inputs is True
+    assert config.hide_outputs is True
+    assert config.hide_input_messages is True
+    assert config.hide_output_messages is True
 
 
 def test_span_noop_mode_yields_span_like_object(monkeypatch) -> None:

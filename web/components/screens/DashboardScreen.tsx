@@ -192,7 +192,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
                 <I.CheckCircle size={20} color="var(--success-accent)" />
                 <span>
                   <strong style={{ display: "block" }}>No critical blockers found</strong>
-                  <span style={{ display: "block", marginTop: 3, fontSize: "var(--text-sm)" }}>Upload more documents or ask Executor what to check next.</span>
+                  <span style={{ display: "block", marginTop: 3, fontSize: "var(--text-sm)" }}>Upload more documents or ask Estate Chat what to check next.</span>
                 </span>
               </div>
             </Card>
@@ -318,7 +318,7 @@ function RealDashboard({ real, alerts, onOpenStep, deadlineRefreshing = false }:
                 <I.CheckCircle size={20} color="var(--success-accent)" />
                 <span>
                   <strong style={{ display: "block" }}>No critical blockers found</strong>
-                  <span style={{ display: "block", marginTop: 3, fontSize: "var(--text-sm)" }}>Upload more documents or ask Executor what to check next.</span>
+                  <span style={{ display: "block", marginTop: 3, fontSize: "var(--text-sm)" }}>Upload more documents or ask Estate Chat what to check next.</span>
                 </span>
               </div>
             </Card>
