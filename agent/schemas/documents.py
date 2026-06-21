@@ -4,11 +4,11 @@ from typing import Literal
 
 from pydantic import Field
 
-from .estate import Asset, Beneficiary
+from .estate import Asset, Beneficiary, Debt
 from .estate import ContractModel
 
 
-DocumentType = Literal["will", "bank_statement", "deed", "unknown"]
+DocumentType = Literal["will", "bank_statement", "deed", "creditor_notice", "unknown"]
 
 
 class DocumentExtraction(ContractModel):
@@ -46,6 +46,15 @@ class DeedExtraction(DocumentExtraction):
     grantee: str | None = None
     recordedDate: str | None = None
     estimatedValue: float | None = None
+
+
+class CreditorNoticeExtraction(DocumentExtraction):
+    documentType: Literal["creditor_notice"] = "creditor_notice"
+    creditorName: str | None = None
+    amountOwed: float | None = None
+    accountNumber: str | None = None
+    debtType: Literal["secured", "unsecured", "priority"] = "unsecured"
+    debts: list[Debt] = Field(default_factory=list)
 
 
 class UnknownDocumentExtraction(DocumentExtraction):

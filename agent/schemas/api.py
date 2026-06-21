@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from .documents import BankStatementExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
-from .estate import Alert, ContractModel, EstateState
+from .documents import BankStatementExtraction, CreditorNoticeExtraction, DeedExtraction, UnknownDocumentExtraction, WillExtraction
+from .estate import Alert, ContractModel, EstateState, SavedLetter
 
-AnyDocumentExtraction = WillExtraction | BankStatementExtraction | DeedExtraction | UnknownDocumentExtraction
+AnyDocumentExtraction = WillExtraction | BankStatementExtraction | DeedExtraction | CreditorNoticeExtraction | UnknownDocumentExtraction
 
 
 class SearchResult(ContractModel):
@@ -54,6 +54,18 @@ class GenerateLetterRequest(ContractModel):
     estateId: str = "demo-milligan"
     letterType: str = "creditor_notice"
     recipientName: str | None = None
+
+
+class SaveLetterRequest(ContractModel):
+    estateId: str
+    letterType: str
+    recipientName: str | None = None
+    draft: str
+
+
+class SaveLetterResponse(ContractModel):
+    estateId: str
+    letter: SavedLetter
 
 
 class EstateResponse(ContractModel):

@@ -5,7 +5,8 @@ import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, Button, Select, Badge } from "@/components/ds";
 import type { EstateProfile } from "@/lib/design/data";
-import { generateLetter, getEstate } from "@/lib/agentClient";
+import { generateLetter, getEstate, saveLetter } from "@/lib/agentClient";
+import type { SavedLetter } from "@/types";
 
 const I = ExecutorIcons;
 
@@ -23,10 +24,11 @@ const LETTER_TYPES: { value: string; label: string }[] = [
 
 // Which letter types are addressed to a specific person/organization, and where
 // to source the candidate recipients from in the estate state.
-const RECIPIENT_SOURCE: Record<string, "creditors" | "beneficiaries"> = {
+const RECIPIENT_SOURCE: Record<string, "creditors" | "beneficiaries" | "bankAccounts" | "properties"> = {
   creditor_notice: "creditors",
-  bank_notification: "creditors",
+  bank_notification: "bankAccounts",
   beneficiary_update: "beneficiaries",
+  property_transfer: "properties",
 };
 
 export function LettersScreen({ estate }: Props) {
@@ -40,13 +42,38 @@ export function LettersScreen({ estate }: Props) {
   const [showPdf, setShowPdf] = React.useState(false);
   const [creditors, setCreditors] = React.useState<string[]>([]);
   const [beneficiaries, setBeneficiaries] = React.useState<string[]>([]);
-  
-  const markdownRef = React.useRef<HTMLDivElement>(null);
+  const [bankAccounts, setBankAccounts] = React.useState<string[]>([]);
+  const [properties, setProperties] = React.useState<string[]>([]);
+  const [savedLetters, setSavedLetters] = React.useState<SavedLetter[]>([]);
+  const [saving, setSaving] = React.useState(false);
+
+  const markdownRef = React.useRef<HTMLTextAreaElement>(null);
   function copyDraft() { navigator.clipboard?.writeText(draft); }
+
+  async function saveDraft() {
+    if (!estateId || !draft || saving) return;
+    setSaving(true);
+    try {
+      const letter = await saveLetter(estateId, type, draft, recipient || null);
+      setSavedLetters((prev) => [letter, ...prev.filter((l) => l.id !== letter.id)]);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function loadLetter(letter: SavedLetter) {
+    setType(letter.letterType);
+    setRecipient(letter.recipientName ?? "");
+    setDraft(letter.draft);
+  }
 
   const typeLabel = LETTER_TYPES.find((t) => t.value === type)?.label ?? type;
   const recipientSource = RECIPIENT_SOURCE[type];
-  const recipientOptions = recipientSource === "beneficiaries" ? beneficiaries : creditors;
+  const recipientOptions =
+    recipientSource === "beneficiaries" ? beneficiaries :
+    recipientSource === "bankAccounts" ? bankAccounts :
+    recipientSource === "properties" ? properties :
+    creditors;
 
   // Pull the real creditors and beneficiaries so the recipient list reflects
   // this estate's parsed documents instead of hardcoded names.
@@ -58,6 +85,9 @@ export function LettersScreen({ estate }: Props) {
         if (cancelled) return;
         setCreditors(e.debts.map((d) => d.creditor).filter(Boolean));
         setBeneficiaries(e.beneficiaries.map((b) => b.name).filter(Boolean));
+        setBankAccounts(e.assets.filter((a) => a.type === "bank_account").map((a) => a.description).filter(Boolean));
+        setProperties(e.assets.filter((a) => a.type === "real_estate" || a.type === "vehicle").map((a) => a.description).filter(Boolean));
+        setSavedLetters(e.letters ?? []);
       })
       .catch(() => {
         /* leave recipient lists empty; the backend still drafts with a generic recipient */
@@ -139,13 +169,22 @@ export function LettersScreen({ estate }: Props) {
           </div>
         </Card>
 
-        <Card title="Draft preview" subtitle={draft ? "Review, then print or copy to send" : "No draft yet"}
+        <Card title="Draft preview" subtitle={draft ? "Edit below, then save, print, or copy" : "No draft yet"}
           headerRight={draft ? <Badge tone="brand">Draft</Badge> : null}
-          footer={draft ? <div style={{ display: "flex", gap: 8 }}><Button variant="secondary" size="sm" onClick={copyDraft}>Copy as plain text</Button><Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button></div> : null}>
-          {draft ? (
-            <div ref={markdownRef} style={{ padding: "var(--space-5)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.8, color: "var(--text-body)", whiteSpace: "pre-wrap" }}>
-              {draft}
+          footer={draft ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="secondary" size="sm" onClick={saveDraft} disabled={saving}>{saving ? "Saving…" : "Save draft"}</Button>
+              <Button variant="secondary" size="sm" onClick={copyDraft}>Copy</Button>
+              <Button variant="primary" size="sm" leadingIcon={<I.FileText size={15} />} onClick={() => setShowPdf(true)}>Print to sign</Button>
             </div>
+          ) : null}>
+          {draft ? (
+            <textarea
+              ref={markdownRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              style={{ display: "block", width: "100%", minHeight: 420, padding: "var(--space-5)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.8, color: "var(--text-body)", whiteSpace: "pre-wrap", border: "none", outline: "none", resize: "vertical", background: "transparent", boxSizing: "border-box" }}
+            />
           ) : (
             <div style={{ padding: "32px 0", textAlign: "center", color: "var(--text-subtle)" }}>
               <I.FileText size={28} color="var(--text-subtle)" />
@@ -154,6 +193,27 @@ export function LettersScreen({ estate }: Props) {
           )}
         </Card>
       </section>
+
+      {savedLetters.length > 0 && (
+        <section>
+          <h2 style={{ margin: "0 0 var(--space-4)", fontFamily: "var(--font-display)", fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-strong)" }}>Saved letters</h2>
+          <div style={{ display: "grid", gap: "var(--space-2)" }}>
+            {savedLetters.map((l) => (
+              <button key={l.id} onClick={() => loadLetter(l)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "var(--space-3) var(--space-4)", background: "var(--surface-card)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", cursor: "pointer", textAlign: "left", width: "100%" }}>
+                <I.FileText size={16} color="var(--text-muted)" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)" }}>
+                    {LETTER_TYPES.find((t) => t.value === l.letterType)?.label ?? l.letterType}
+                    {l.recipientName ? ` — ${l.recipientName}` : ""}
+                  </p>
+                  <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{new Date(l.savedAt).toLocaleString()}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {showPdf ? (
         <div role="presentation" onClick={() => setShowPdf(false)}

@@ -1,6 +1,6 @@
-import type { Asset, Beneficiary } from "./estate";
+import type { Asset, Beneficiary, Debt } from "./estate";
 
-export type DocumentType = "will" | "bank_statement" | "deed" | "unknown";
+export type DocumentType = "will" | "bank_statement" | "deed" | "creditor_notice" | "unknown";
 
 export interface DocumentExtraction {
   documentType: DocumentType;
@@ -39,6 +39,15 @@ export interface DeedExtraction extends DocumentExtraction {
   estimatedValue?: number | null;
 }
 
+export interface CreditorNoticeExtraction extends DocumentExtraction {
+  documentType: "creditor_notice";
+  creditorName?: string | null;
+  amountOwed?: number | null;
+  accountNumber?: string | null;
+  debtType: "secured" | "unsecured" | "priority";
+  debts: Debt[];
+}
+
 export interface UnknownDocumentExtraction extends DocumentExtraction {
   documentType: "unknown";
   reason: string;
@@ -48,4 +57,5 @@ export type AnyDocumentExtraction =
   | WillExtraction
   | BankStatementExtraction
   | DeedExtraction
+  | CreditorNoticeExtraction
   | UnknownDocumentExtraction;
