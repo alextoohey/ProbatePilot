@@ -1,9 +1,26 @@
+@import "./design/tokens.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+html,
 body {
-  background: #f7f7f4;
-  color: #1f2933;
+  margin: 0;
+  height: 100%;
 }
 
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-body);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-300);
+  border-radius: 999px;
+  border: 3px solid var(--bg-app);
+}
