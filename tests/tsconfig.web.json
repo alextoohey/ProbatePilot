@@ -10,6 +10,10 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../web/*"]
+    },
     "isolatedModules": false,
     "incremental": false,
     "outDir": "./.compiled",
@@ -17,6 +21,8 @@
   },
   "include": [
     "../tests/member2_web_contracts.test.ts",
+    "../tests/member4_agent_client.test.ts",
+    "../web/lib/agentClient.ts",
     "../web/lib/schemas/**/*.ts",
     "../web/types/**/*.ts"
   ],

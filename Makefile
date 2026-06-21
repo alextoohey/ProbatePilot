@@ -45,8 +45,8 @@ health:  ## Check the agent is up
 
 test: test-agent test-web-contracts  ## Run Python and TypeScript contract tests
 
-test-agent:  ## Run Member 1/2 Python tests
-	cd agent && STORE_BACKEND=memory uv run pytest ../tests/member1 ../tests/member2
+test-agent:  ## Run Member 1/2 Python and integration tests
+	cd agent && STORE_BACKEND=memory uv run pytest ../tests/member1 ../tests/member2 ../tests/integration
 
 test-web-contracts:  ## Run TypeScript/Zod contract tests
 	cd web && npm run test:contracts

@@ -3,8 +3,7 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Badge, Button, Card } from "@/components/ds";
-import { parseDocument } from "@/lib/agentClient";
-import type { AnyDocumentExtraction } from "@/types/documents";
+import { getEstate, parseDocument } from "@/lib/agentClient";
 import {
   DEMO_ESTATE,
   DOC_CHECKLIST,
@@ -15,72 +14,49 @@ import {
   type EstateProfile,
   type Asset,
 } from "@/lib/design/data";
-
-// Accepted upload types — mirrors ACCEPTED_CONTENT_TYPES in the Python agent.
-const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.txt,.html";
-
-const DOC_TYPE_LABEL: Record<string, string> = {
-  will: "Will",
-  bank_statement: "Bank statement",
-  deed: "Deed",
-  unknown: "Document",
-};
-
-// Map a parsed extraction into rows for the "Estate, reconstructed" panel.
-function extractionToAssets(extraction: AnyDocumentExtraction): Asset[] {
-  if (extraction.documentType === "will") {
-    const kindByType: Record<string, Asset["kind"]> = {
-      real_estate: "Home", bank_account: "Bank", vehicle: "Car",
-    };
-    const typeLabel: Record<string, string> = {
-      real_estate: "Real estate", bank_account: "Bank account", retirement: "Retirement",
-      vehicle: "Vehicle", personal_property: "Personal property", other: "Other",
-    };
-    return (extraction.assets || []).map((a, i) => ({
-      id: `asset-will-${Date.now()}-${i}`,
-      kind: kindByType[a.type] || "Other",
-      type: typeLabel[a.type] || "Other",
-      desc: a.description || "",
-      value: Number(a.estimatedValue) || 0,
-      appraised: Boolean(a.appraised),
-      fields: [],
-    }));
-  }
-  if (extraction.documentType === "deed") {
-    return [{
-      id: `asset-deed-${Date.now()}`,
-      kind: "Home",
-      type: "Real estate",
-      desc: extraction.propertyAddress || "Real property",
-      value: Number(extraction.estimatedValue) || 0,
-      appraised: false,
-      fields: [
-        ...(extraction.apn ? [{ label: "APN", value: extraction.apn }] : []),
-        ...(extraction.grantor ? [{ label: "Grantor", value: extraction.grantor }] : []),
-        ...(extraction.grantee ? [{ label: "Grantee", value: extraction.grantee }] : []),
-      ],
-    }];
-  }
-  if (extraction.documentType === "bank_statement") {
-    return [{
-      id: `asset-bank-${Date.now()}`,
-      kind: "Bank",
-      type: "Bank account",
-      desc: [extraction.institution, extraction.accountLast4 ? `…${extraction.accountLast4}` : ""].filter(Boolean).join(" ") || "Bank account",
-      value: Number(extraction.balance) || 0,
-      appraised: true,
-      fields: [
-        ...(extraction.accountType ? [{ label: "Account type", value: extraction.accountType }] : []),
-        ...(extraction.statementDate ? [{ label: "Statement date", value: extraction.statementDate }] : []),
-      ],
-    }];
-  }
-  return [];
-}
+import type { Asset as EstateAsset } from "@/types/estate";
 
 type Props = { estate?: EstateProfile | null };
 
 type Doc = { id: string; name: string; type: string; parsed: boolean };
+
+function documentTypeLabel(documentType: string) {
+  return documentType.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function assetKind(asset: EstateAsset): Asset["kind"] {
+  if (asset.type === "real_estate") return "Home";
+  if (asset.type === "bank_account" || asset.type === "retirement") return "Bank";
+  if (asset.type === "vehicle") return "Car";
+  return "Other";
+}
+
+function assetTypeLabel(asset: EstateAsset) {
+  return asset.type.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function assetFields(asset: EstateAsset) {
+  const fields = [{ label: "Source", value: asset.id }];
+  if (asset.beneficiaryNamed !== undefined && asset.beneficiaryNamed !== null) {
+    fields.push({ label: "Beneficiary named", value: asset.beneficiaryNamed ? "Yes" : "No" });
+  }
+  if (asset.appraisedValue !== undefined && asset.appraisedValue !== null) {
+    fields.push({ label: "Appraised value", value: fmtMoney(asset.appraisedValue) });
+  }
+  return fields;
+}
+
+function fromEstateAsset(asset: EstateAsset): Asset {
+  return {
+    id: asset.id,
+    kind: assetKind(asset),
+    type: assetTypeLabel(asset),
+    desc: asset.description,
+    value: asset.estimatedValue ?? asset.appraisedValue ?? 0,
+    appraised: asset.appraised,
+    fields: assetFields(asset),
+  };
+}
 
 // Documents, drop zone + the live estate graph built from parsed documents.
 export function UploadScreen({ estate }: Props) {
@@ -98,12 +74,12 @@ export function UploadScreen({ estate }: Props) {
   const [drag, setDrag] = React.useState(false);
   const [parsing, setParsing] = React.useState(false);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [assets, setAssets] = React.useState<Asset[]>(seeded ? E.assets.map((a) => ({ ...a })) : []);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draftRow, setDraftRow] = React.useState<Asset | null>(null);
   const [naSet, setNaSet] = React.useState<string[]>([]);
   const [openDoc, setOpenDoc] = React.useState<Doc | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   function downloadDoc(d: Doc) {
     const body = "EXECUTOR AI — DOCUMENT EXPORT\n\nFile: " + d.name + "\nType: " + d.type + "\nEstate: " + (estate ? estate.deceasedName : E.deceasedName) + "\nStatus: Parsed\n\n(This is a sample export generated by the Executor AI prototype.)\n";
@@ -146,25 +122,30 @@ export function UploadScreen({ estate }: Props) {
   }
   function deleteAsset(id: string) { setAssets((cur) => cur.filter((a) => a.id !== id)); if (editingId === id) cancelEdit(); }
 
-  async function handleFile(file: File) {
+  async function uploadFile(file: File) {
+    const estateId = estate?.id ?? E.id;
     setUploadError(null);
     setParsing(true);
     try {
-      const { extraction } = await parseDocument(file);
-      const docType = DOC_TYPE_LABEL[extraction.documentType] || "Document";
-      setDocs((d) => [...d, { id: "doc-" + Date.now(), name: file.name, type: docType, parsed: true }]);
-      const newAssets = extractionToAssets(extraction);
-      if (newAssets.length) setAssets((cur) => [...cur, ...newAssets]);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Couldn't read that document. Please try again.");
+      const parsed = await parseDocument(file, estateId);
+      setDocs((current) => [
+        ...current,
+        {
+          id: `doc-${Date.now()}-${file.name}`,
+          name: file.name,
+          type: documentTypeLabel(parsed.extraction.documentType),
+          parsed: true,
+        },
+      ]);
+      const refreshed = await getEstate(estateId);
+      setAssets(refreshed.assets.map(fromEstateAsset));
+    } catch (error) {
+      console.error(error);
+      setUploadError(error instanceof Error ? error.message : "Couldn't read that document. Please try again.");
     } finally {
       setParsing(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
-  }
-
-  function onPick(files: FileList | null) {
-    const file = files?.[0];
-    if (file) void handleFile(file);
   }
 
   const assetIcon: Record<string, typeof I.Home> = { Home: I.Home, Bank: I.Bank, Car: I.Car };
@@ -181,7 +162,17 @@ export function UploadScreen({ estate }: Props) {
       <label
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); if (!parsing) onPick(e.dataTransfer.files); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          if (parsing) return;
+          const file = e.dataTransfer.files?.[0];
+          if (file) void uploadFile(file);
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          if (!parsing) inputRef.current?.click();
+        }}
         style={{
           display: "block", textAlign: "center", cursor: parsing ? "default" : "pointer", padding: "44px 24px",
           borderRadius: "var(--radius-lg)", border: `1.5px dashed ${drag ? "var(--evergreen-500)" : "var(--border-strong)"}`,
@@ -189,12 +180,15 @@ export function UploadScreen({ estate }: Props) {
           opacity: parsing ? 0.7 : 1,
         }}>
         <input
-          ref={fileInputRef}
+          ref={inputRef}
           type="file"
-          accept={ACCEPT}
+          accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
           disabled={parsing}
-          style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", border: 0 }}
-          onChange={(e) => { onPick(e.target.files); e.target.value = ""; }}
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void uploadFile(file);
+          }}
         />
         <div style={{ display: "inline-flex", width: 48, height: 48, borderRadius: "999px", background: "var(--evergreen-100)", color: "var(--evergreen-700)", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
           <I.Upload size={22} />
