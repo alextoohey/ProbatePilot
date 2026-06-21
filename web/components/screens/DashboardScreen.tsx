@@ -5,15 +5,18 @@ import { ExecutorIcons } from "@/lib/design/icons";
 import { Card, StatBlock, Alert, Badge, ProgressSteps, Button, Avatar } from "@/components/ds";
 import { DEMO_ESTATE, fmtMoney, type EstateProfile, type Beneficiary } from "@/lib/design/data";
 import { BeneficiaryModal } from "./BeneficiaryModal";
+import type { Alert as BackendAlert, EstateState } from "@/types";
 
 type Props = {
   estate?: EstateProfile;
   completedIds?: string[];
   onOpenStep?: (id: string) => void;
   onGoDocuments?: () => void;
+  liveAlerts?: BackendAlert[];
+  liveEstate?: EstateState | null;
 };
 
-export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments }: Props) {
+export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDocuments, liveAlerts, liveEstate }: Props) {
   const E = DEMO_ESTATE;
   const fmt = fmtMoney;
   const I = ExecutorIcons;
@@ -55,46 +58,55 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
   }
 
   const done = new Set(completedIds);
-  const phase2 = E.alerts;
-  const phase2Done = phase2.every((a) => done.has(a.id));
-  const next = E.alertsNext || [];
-  const nextDone = phase2Done && next.every((a) => done.has(a.id));
 
-  // Once the current phase is cleared, the next phase's assignments appear.
-  const activeAlerts = phase2Done ? next : phase2;
-  const open = activeAlerts.filter((a) => !done.has(a.id));
-  const completed = [...phase2, ...(phase2Done ? next : [])].filter((a) => done.has(a.id));
-  const justAdvanced = phase2Done && open.length > 0;
-  const assetTotal = E.assets.reduce((s, a) => s + a.value, 0);
-  const debtTotal = E.debts.reduce((s, d) => s + d.amount, 0);
+  const usingLive = liveAlerts && liveAlerts.length > 0;
+  const allAlerts = usingLive
+    ? liveAlerts!.map((a) => ({ ...a, steps: [] as string[], whatYouNeed: [] as string[], daysRemaining: a.daysRemaining ?? 0 }))
+    : [...E.alerts, ...(E.alertsNext || [])];
+  const open = allAlerts.filter((a) => !done.has(a.id) && !(a as BackendAlert).dismissed);
+  const completed = allAlerts.filter((a) => done.has(a.id) || !!(a as BackendAlert).dismissed);
+  const justAdvanced = false;
+
+  const assetTotal = liveEstate
+    ? liveEstate.assets.reduce((s, a) => s + (a.estimatedValue ?? 0), 0)
+    : E.assets.reduce((s, a) => s + a.value, 0);
+  const debtTotal = liveEstate
+    ? liveEstate.debts.reduce((s, d) => s + d.amount, 0)
+    : E.debts.reduce((s, d) => s + d.amount, 0);
 
   const taskTone = { done: "success", todo: "neutral", blocked: "warning" } as const;
   const taskLabel = { done: "Done", todo: "To do", blocked: "Blocked" } as const;
 
-  // When every attention item is handled, the estate advances to the next phase.
   const allDone = open.length === 0;
-  const advanced = (phase2Done ? 1 : 0) + (nextDone ? 1 : 0);
-  const currentIndex = Math.min(E.phase - 1 + advanced, E.phases.length - 1);
+  const currentPhase = liveEstate ? liveEstate.phase : E.phase;
+  const currentIndex = Math.min(currentPhase - 1, E.phases.length - 1);
   const phaseNum = currentIndex + 1;
   const phaseName = E.phases[currentIndex];
+  const deceasedName = liveEstate ? liveEstate.deceasedName : E.deceasedName;
+  const appointmentDate = liveEstate ? liveEstate.appointmentDate : E.appointmentDate;
+  const beneficiaryCount = liveEstate ? liveEstate.beneficiaries.length : E.beneficiaries.length;
+  const assetCount = liveEstate ? liveEstate.assets.length : E.assets.length;
+  const appraisedCount = liveEstate
+    ? liveEstate.assets.filter((a) => a.appraised).length
+    : E.assets.filter((a) => a.appraised).length;
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px 40px", display: "grid", gap: "var(--space-8)" }}>
       <header>
         <p style={{ margin: 0, fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "var(--text-muted)" }}>Executor dashboard</p>
         <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", color: "var(--text-strong)" }}>
-          The estate of {E.deceasedName}
+          The estate of {deceasedName}
         </h1>
         <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
-          Letters testamentary issued {E.appointmentDate}. Here's where things stand, and the next thing to handle.
+          Letters testamentary issued {appointmentDate}. Here's where things stand, and the next thing to handle.
         </p>
       </header>
 
       <Card padded={true}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-6)", marginBottom: "var(--space-6)" }}>
-          <StatBlock label="Assets" value={fmt(assetTotal)} sub={`${E.assets.length} items, 2 appraised`} />
-          <StatBlock label="Debts" value={fmt(debtTotal)} tone="critical" sub={`${E.debts.length} creditors`} />
-          <StatBlock label="Beneficiaries" value={String(E.beneficiaries.length)} sub="Dana, Sarah, Marcus" />
+          <StatBlock label="Assets" value={fmt(assetTotal)} sub={`${assetCount} items, ${appraisedCount} appraised`} />
+          <StatBlock label="Debts" value={fmt(debtTotal)} tone="critical" sub={`${liveEstate ? liveEstate.debts.length : E.debts.length} creditors`} />
+          <StatBlock label="Beneficiaries" value={String(beneficiaryCount)} sub={liveEstate ? liveEstate.beneficiaries.map((b) => b.name.split(" ")[0]).join(", ") : "Dana, Sarah, Marcus"} />
           <StatBlock label="Phase" value={`${phaseNum} of 6`} tone={allDone ? "success" : "brand"} sub={phaseName} />
         </div>
         <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-6)" }}>
