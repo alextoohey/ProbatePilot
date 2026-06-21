@@ -1,16 +1,16 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { ExecutorIcons } from "@/lib/design/icons";
 import {
   DEMO_ESTATE,
-  ESTATE_PROFILES,
   EXECUTOR_PROFILE,
   type EstateProfile,
   type ExecutorProfile,
 } from "@/lib/design/data";
-import { runDeadlineAgent, getEstate } from "@/lib/agentClient";
-import type { Alert as BackendAlert, EstateState } from "@/types";
+import { getMe, logout as apiLogout, runDeadlineAgent, getEstate } from "@/lib/agentClient";
+import type { Alert as BackendAlert, EstateState, PublicUser } from "@/types";
 import { Sidebar } from "./Sidebar";
 import { DashboardScreen } from "./DashboardScreen";
 import { StepDetailScreen } from "./StepDetailScreen";
@@ -24,13 +24,45 @@ import { ProfileEditorModal } from "./ProfileEditorModal";
 type Route = "dashboard" | "documents" | "chat" | "letters";
 type NotifPrefs = { all: boolean; deadlines: boolean; weekly: boolean; email: boolean };
 
+// The agent owns the canonical estate shape; the ported UI screens read the
+// lighter EstateProfile/ExecutorProfile shapes. Map the real, logged-in data
+// into those so login reflects who you actually are.
+function toExecutorProfile(user: PublicUser): ExecutorProfile {
+  return {
+    ...EXECUTOR_PROFILE,
+    name: user.name,
+    email: user.email,
+    phone: user.phone ?? "",
+    state: user.state ?? "California",
+    county: user.county ?? "",
+    relationship: user.relationship ?? "",
+  };
+}
+
+function toEstateProfile(estate: EstateState, user: PublicUser): EstateProfile {
+  return {
+    id: estate.id,
+    deceasedName: estate.deceasedName,
+    role: "Executor",
+    relationship: user.relationship ?? "",
+    state: "California",
+    county: user.county ?? "Not set",
+    phase: estate.phase,
+    // The seeded demo estate drives the rich cosmetic screens; real estates
+    // start empty until documents are parsed.
+    seeded: estate.id === "demo-milligan",
+  };
+}
+
 export function AppShell() {
+  const router = useRouter();
   const [route, setRoute] = React.useState<Route>("dashboard");
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [completedIds, setCompletedIds] = React.useState<string[]>([]);
-  const [estates, setEstates] = React.useState<EstateProfile[]>(ESTATE_PROFILES);
-  const [activeEstateId, setActiveEstateId] = React.useState<string>(ESTATE_PROFILES[0].id);
+  const [estates, setEstates] = React.useState<EstateProfile[]>([]);
+  const [activeEstateId, setActiveEstateId] = React.useState<string>("");
   const [profile, setProfile] = React.useState<ExecutorProfile>(EXECUTOR_PROFILE);
+  const [loading, setLoading] = React.useState(true);
   const [showCreate, setShowCreate] = React.useState(false);
   const [showProfile, setShowProfile] = React.useState(false);
   const [notifPrefs, setNotifPrefs] = React.useState<NotifPrefs>({ all: true, deadlines: true, weekly: true, email: false });
@@ -51,7 +83,45 @@ export function AppShell() {
   }, [activeEstateId]);
   const titles: Record<Route, string> = { dashboard: "Dashboard", documents: "Documents", chat: "Estate chat", letters: "Letters" };
 
+  // Load the logged-in user and their estates. A missing/stale session bounces
+  // back to /welcome (the middleware also gates this route).
+  React.useEffect(() => {
+    let cancelled = false;
+    getMe()
+      .then((me) => {
+        if (cancelled) return;
+        if (!me) {
+          router.replace("/welcome");
+          return;
+        }
+        setProfile(toExecutorProfile(me.user));
+        const mapped = me.estates.map((estate) => toEstateProfile(estate, me.user));
+        setEstates(mapped);
+        if (mapped.length > 0) setActiveEstateId(mapped[0].id);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/welcome");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  async function handleLogout() {
+    await apiLogout();
+    router.replace("/welcome");
+  }
+
   const active = estates.find((e) => e.id === activeEstateId) || estates[0];
+
+  if (loading || !active) {
+    return (
+      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: "var(--bg-app)", color: "var(--text-muted)", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)" }}>
+        {loading ? "Loading your estate…" : "No estate found for your account."}
+      </div>
+    );
+  }
 
   function navigate(r: Route) {
     setDetailId(null);
@@ -115,6 +185,7 @@ export function AppShell() {
         onCreateEstate={() => setShowCreate(true)}
         profile={profile}
         onEditProfile={() => setShowProfile(true)}
+        onLogout={handleLogout}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <div style={{ height: 56, flex: "none", borderBottom: "1px solid var(--border-subtle)", background: "var(--paper-50)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 28px" }}>

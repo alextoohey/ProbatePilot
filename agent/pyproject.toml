@@ -19,8 +19,12 @@ dependencies = [
 
     # Data & validation
     "pydantic>=2.7.0",
+    "email-validator>=2.0.0",
     "python-dateutil>=2.9.0",
     "python-dotenv>=1.0.0",
+
+    # Auth
+    "bcrypt>=4.0.0",
 
     # Document processing
     "pypdf>=4.0.0",

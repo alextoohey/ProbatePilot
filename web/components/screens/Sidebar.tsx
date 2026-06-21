@@ -17,9 +17,11 @@ type Props = {
   onCreateEstate: () => void;
   profile: ExecutorProfile;
   onEditProfile: () => void;
+  onLogout: () => void;
 };
 
-export function Sidebar({ active, onNavigate, estates, activeEstateId, onSwitchEstate, onCreateEstate, profile, onEditProfile }: Props) {
+export function Sidebar({ active, onNavigate, estates, activeEstateId, onSwitchEstate, onCreateEstate, profile, onEditProfile, onLogout }: Props) {
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: I.Dashboard },
     { id: "documents", label: "Documents", icon: I.Upload },
@@ -61,19 +63,43 @@ export function Sidebar({ active, onNavigate, estates, activeEstateId, onSwitchE
         })}
       </nav>
 
-      <button onClick={onEditProfile} aria-label="Edit your profile"
-        style={{ marginTop: "auto", padding: 14, borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", transition: "background var(--transition-fast)" }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-        <Avatar name={profile.name} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{profile.name}</div>
-          <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.email}</div>
-        </div>
-        <span style={{ color: "var(--text-subtle)", display: "inline-flex" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-        </span>
-      </button>
+      <div style={{ marginTop: "auto", position: "relative", borderTop: "1px solid var(--border-subtle)" }}>
+        <button onClick={() => setMenuOpen((o) => !o)} aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Your account"
+          style={{ padding: 14, display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", background: menuOpen ? "var(--surface-sunken)" : "transparent", border: "none", cursor: "pointer", transition: "background var(--transition-fast)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = menuOpen ? "var(--surface-sunken)" : "transparent")}>
+          <Avatar name={profile.name} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-strong)" }}>{profile.name}</div>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.email}</div>
+          </div>
+          <span style={{ color: "var(--text-subtle)", display: "inline-flex" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6" /></svg>
+          </span>
+        </button>
+
+        {menuOpen ? (
+          <React.Fragment>
+            <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+            <div role="menu" style={{ position: "absolute", bottom: "calc(100% - 6px)", left: 12, right: 12, zIndex: 50, background: "var(--surface-card)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)", padding: 6, fontFamily: "var(--font-sans)" }}>
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onEditProfile(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: "var(--radius-sm)", border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-body)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                Edit profile
+              </button>
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: "var(--radius-sm)", border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--critical-text)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--critical-bg)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                Log out
+              </button>
+            </div>
+          </React.Fragment>
+        ) : null}
+      </div>
     </aside>
   );
 }
