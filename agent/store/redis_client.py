@@ -26,6 +26,8 @@ DEFAULT_ESTATE_ID = "demo-milligan"
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
 _ESTATES: dict[str, EstateState] = {}
+_CHATS: dict[str, list[dict[str, Any]]] = {}
+MAX_CHAT_MESSAGES = 200
 _VECTORS: list[dict[str, Any]] = []
 _USERS: dict[str, User] = {}
 _USER_EMAILS: dict[str, str] = {}
@@ -61,6 +63,10 @@ def document_file_key(estate_id: str, doc_id: str) -> str:
     return f"{estate_key(estate_id)}:file:{doc_id}"
 
 
+def chat_key(estate_id: str) -> str:
+    return f"{estate_key(estate_id)}:chat"
+
+
 def store_backend() -> str:
     _load_env_file()
     return os.getenv("STORE_BACKEND", "memory").strip().lower() or "memory"
@@ -69,7 +75,58 @@ def store_backend() -> str:
 def seed_demo_estate() -> EstateState:
     estate = build_demo_estate()
     clear_estate_vectors(estate.id)
+    clear_chat_history(estate.id)
     return set_estate_state(estate)
+
+
+# --------------------------------------------------------------------------- #
+# Chat history (persisted per estate alongside estate state)
+# --------------------------------------------------------------------------- #
+
+
+def _decode_chat(raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    if isinstance(raw, (str, bytes, bytearray)):
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    else:
+        data = raw
+    return [m for m in data if isinstance(m, dict)] if isinstance(data, list) else []
+
+
+def get_chat_history(estate_id: str) -> list[dict[str, Any]]:
+    if _use_upstash():
+        return _decode_chat(_redis().get(chat_key(estate_id)))
+    if _use_redis_cloud():
+        return _decode_chat(_redis_cloud().get(chat_key(estate_id)))
+    return deepcopy(_CHATS.get(estate_id, []))
+
+
+def append_chat_messages(estate_id: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    history = get_chat_history(estate_id)
+    history.extend(messages)
+    if len(history) > MAX_CHAT_MESSAGES:
+        history = history[-MAX_CHAT_MESSAGES:]
+
+    if _use_upstash():
+        _redis().set(chat_key(estate_id), json.dumps(history))
+    elif _use_redis_cloud():
+        _redis_cloud().set(chat_key(estate_id), json.dumps(history))
+    else:
+        _CHATS[estate_id] = deepcopy(history)
+    return history
+
+
+def clear_chat_history(estate_id: str) -> None:
+    if _use_upstash():
+        _redis().delete(chat_key(estate_id))
+    elif _use_redis_cloud():
+        _redis_cloud().delete(chat_key(estate_id))
+    else:
+        _CHATS.pop(estate_id, None)
 
 
 # --------------------------------------------------------------------------- #

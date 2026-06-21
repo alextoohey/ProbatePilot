@@ -39,6 +39,17 @@ class ChatRequest(ContractModel):
     topK: int = 5
 
 
+class ChatMessage(ContractModel):
+    role: str  # "user" | "assistant"
+    content: str
+    createdAt: str
+
+
+class ChatHistoryResponse(ContractModel):
+    estateId: str
+    messages: list[ChatMessage] = Field(default_factory=list)
+
+
 class GenerateLetterRequest(ContractModel):
     estateId: str = "demo-milligan"
     letterType: str = "creditor_notice"

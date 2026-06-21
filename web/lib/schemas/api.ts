@@ -46,6 +46,17 @@ export const generateLetterResponseSchema = z.object({
   draft: z.string(),
 }).strict();
 
+export const chatMessageSchema = z.object({
+  role: z.string(),
+  content: z.string(),
+  createdAt: z.string(),
+}).strict();
+
+export const chatHistoryResponseSchema = z.object({
+  estateId: z.string(),
+  messages: z.array(chatMessageSchema),
+}).strict();
+
 export const estateResponseSchema = z.object({
   estate: estateStateSchema,
 }).strict();

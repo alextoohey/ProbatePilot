@@ -5,8 +5,10 @@
 import React from "react";
 import { ExecutorIcons } from "@/lib/design/icons";
 import { Avatar, Button } from "@/components/ds";
+import { Markdown } from "@/components/Markdown";
 import type { EstateProfile } from "@/lib/design/data";
-import { getEstate, openChatStream } from "@/lib/agentClient";
+import { getChatHistory, getEstate, openChatStream } from "@/lib/agentClient";
+import type { EstateState } from "@/types";
 
 const I = ExecutorIcons;
 
@@ -14,7 +16,25 @@ type Props = { estate: EstateProfile };
 
 type Msg = { from: "ai" | "user"; text: string };
 
-const SUGGESTIONS = ["What's the most urgent deadline?", "How much does the estate owe?", "Explain a DE-160 in plain English"];
+// Shown before the real estate loads (or if it can't be fetched).
+const DEFAULT_SUGGESTIONS = ["What's the most urgent deadline?", "What should I do next?", "Explain a DE-160 in plain English"];
+
+// Build suggested questions from the actual estate state so they point at this
+// estate's real deadlines, debts, and people instead of a fixed script.
+function buildSuggestions(estate: EstateState): string[] {
+  const out: string[] = [];
+  if (estate.alerts?.length) out.push("What's the most urgent deadline?");
+  if (estate.debts?.length) {
+    out.push("How much does the estate owe?");
+    const unnotified = estate.debts.find((d) => !d.notified);
+    if (unnotified) out.push(`Do I need to notify ${unnotified.creditor}?`);
+  }
+  if (estate.assets?.length) out.push("What is the estate worth right now?");
+  if (estate.beneficiaries?.length) out.push("Who inherits what under the will?");
+  out.push("What should I do next?");
+  const unique = Array.from(new Set(out));
+  return (unique.length ? unique : DEFAULT_SUGGESTIONS).slice(0, 4);
+}
 
 function firstName(full: string): string {
   return full.trim().split(/\s+/)[0] || full.trim();
@@ -37,7 +57,7 @@ function buildGreeting(deceasedName: string, executorName?: string | null, docum
 }
 
 export function ChatScreen({ estate }: Props) {
-  const suggestions = SUGGESTIONS;
+  const [suggestions, setSuggestions] = React.useState<string[]>(DEFAULT_SUGGESTIONS);
   const [msgs, setMsgs] = React.useState<Msg[]>(() => [{ from: "ai", text: buildGreeting(estate.deceasedName) }]);
   const [subtitle, setSubtitle] = React.useState(`Grounded in ${firstName(estate.deceasedName)}'s documents, not legal advice`);
   const [draft, setDraft] = React.useState("");
@@ -47,21 +67,27 @@ export function ChatScreen({ estate }: Props) {
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
 
-  // Enrich the greeting once the real estate loads — but only if the executor
-  // hasn't started the conversation yet.
+  // Load the real estate (for the greeting + suggestions) and any prior chat
+  // history. If there's saved history, restore the conversation; otherwise show
+  // a greeting built from this estate's executor, deceased, and parsed documents.
   React.useEffect(() => {
     if (!estate.id) return;
     let cancelled = false;
-    getEstate(estate.id)
-      .then((e) => {
-        if (cancelled) return;
-        setSubtitle(`Grounded in ${firstName(e.deceasedName)}'s documents, not legal advice`);
-        const greeting = buildGreeting(e.deceasedName, e.executor?.name, e.documents.map((d) => d.documentType));
+    Promise.allSettled([getEstate(estate.id), getChatHistory(estate.id)]).then(([eRes, hRes]) => {
+      if (cancelled) return;
+      const estateData = eRes.status === "fulfilled" ? eRes.value : null;
+      if (estateData) {
+        setSubtitle(`Grounded in ${firstName(estateData.deceasedName)}'s documents, not legal advice`);
+        setSuggestions(buildSuggestions(estateData));
+      }
+      const history = hRes.status === "fulfilled" ? hRes.value : [];
+      if (history.length > 0) {
+        setMsgs(history.map((m) => ({ from: m.role === "user" ? "user" : "ai", text: m.content })));
+      } else if (estateData) {
+        const greeting = buildGreeting(estateData.deceasedName, estateData.executor?.name, estateData.documents.map((d) => d.documentType));
         setMsgs((m) => (m.length === 1 && m[0].from === "ai" ? [{ from: "ai", text: greeting }] : m));
-      })
-      .catch(() => {
-        /* keep the name-only greeting if the estate can't be fetched */
-      });
+      }
+    });
     return () => { cancelled = true; };
   }, [estate.id]);
 
@@ -187,13 +213,17 @@ export function ChatScreen({ estate }: Props) {
           <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", flexDirection: m.from === "user" ? "row-reverse" : "row" }}>
             {m.from === "ai" ? <Avatar initials="AI" tone="ink" size="sm" /> : <Avatar name="Dana Milligan" size="sm" />}
             <div style={{
-              maxWidth: "76%", whiteSpace: "pre-wrap", lineHeight: "var(--leading-relaxed)", fontSize: "var(--text-base)",
+              maxWidth: "76%", whiteSpace: m.from === "user" ? "pre-wrap" : "normal", lineHeight: "var(--leading-relaxed)", fontSize: "var(--text-base)",
               padding: "12px 16px", borderRadius: m.from === "user" ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
               background: m.from === "user" ? "var(--evergreen-700)" : "var(--surface-card)",
               color: m.from === "user" ? "var(--text-inverse)" : "var(--text-body)",
               border: m.from === "user" ? "none" : "1px solid var(--border-subtle)",
               boxShadow: "var(--shadow-xs)",
-            }}>{m.text || (m.from === "ai" && busy ? "…" : "")}</div>
+            }}>
+              {m.from === "ai"
+                ? (m.text ? <Markdown text={m.text} /> : (busy ? "…" : ""))
+                : m.text}
+            </div>
           </div>
         ))}
         <div ref={endRef} />

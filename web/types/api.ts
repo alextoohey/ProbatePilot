@@ -33,6 +33,17 @@ export interface ChatRequest {
   topK?: number;
 }
 
+export interface ChatMessage {
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatHistoryResponse {
+  estateId: string;
+  messages: ChatMessage[];
+}
+
 export interface GenerateLetterRequest {
   estateId: string;
   letterType: string;
