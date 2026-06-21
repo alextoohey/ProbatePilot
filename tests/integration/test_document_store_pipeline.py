@@ -32,7 +32,8 @@ def test_bank_statement_upload_updates_estate_assets_documents_and_vectors(
 ) -> None:
     import main
 
-    async def fake_parse_document_text(_text: str) -> BankStatementExtraction:
+    async def fake_parse_document_text(_text: str, forced_type: str | None = None) -> BankStatementExtraction:
+        assert forced_type is None
         return BankStatementExtraction(
             documentType="bank_statement",
             confidence=0.95,

@@ -113,6 +113,8 @@ def test_api_response_contracts_validate_union_payloads() -> None:
             "rawChunks": ["unclassified"],
             "reason": "No known legal or financial document markers.",
         },
+        documentType="unknown",
+        needsTypeSelection=True,
         alerts=[alert],
     )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 from copy import deepcopy
@@ -11,16 +12,25 @@ from typing import Any
 from pydantic import BaseModel
 
 from schemas.api import SearchResult
+from schemas.auth import User
 from schemas.estate import Alert, EstateState, Executor, UploadedDocument, utc_now_iso
 from seed.demo_estate import build_demo_estate
 
 
 ESTATE_KEY_PREFIX = "estate:"
+USER_KEY_PREFIX = "user:"
+USER_EMAIL_KEY_PREFIX = "user_email:"
+SESSION_KEY_PREFIX = "session:"
 VECTOR_INDEX_NAME = "estate_chunks"
 DEFAULT_ESTATE_ID = "demo-milligan"
+SESSION_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
 _ESTATES: dict[str, EstateState] = {}
 _VECTORS: list[dict[str, Any]] = []
+_USERS: dict[str, User] = {}
+_USER_EMAILS: dict[str, str] = {}
+_SESSIONS: dict[str, str] = {}
+_DOC_FILES: dict[str, dict[str, Any]] = {}
 _REDIS_CLIENT: Any | None = None
 _REDIS_CLOUD_CLIENT: Any | None = None
 _VECTOR_CLIENT: Any | None = None
@@ -35,6 +45,22 @@ def vector_set_key(estate_id: str) -> str:
     return f"{estate_key(estate_id)}:chunks"
 
 
+def user_key(user_id: str) -> str:
+    return f"{USER_KEY_PREFIX}{user_id}"
+
+
+def user_email_key(email: str) -> str:
+    return f"{USER_EMAIL_KEY_PREFIX}{email.strip().lower()}"
+
+
+def session_key(token: str) -> str:
+    return f"{SESSION_KEY_PREFIX}{token}"
+
+
+def document_file_key(estate_id: str, doc_id: str) -> str:
+    return f"{estate_key(estate_id)}:file:{doc_id}"
+
+
 def store_backend() -> str:
     _load_env_file()
     return os.getenv("STORE_BACKEND", "memory").strip().lower() or "memory"
@@ -44,6 +70,105 @@ def seed_demo_estate() -> EstateState:
     estate = build_demo_estate()
     clear_estate_vectors(estate.id)
     return set_estate_state(estate)
+
+
+# --------------------------------------------------------------------------- #
+# Users & sessions (same Redis store as estate state)
+# --------------------------------------------------------------------------- #
+
+
+def create_user(user: User) -> User:
+    """Persist a new user and its email -> id index. Caller must ensure the
+    email is not already taken (use ``get_user_by_email`` first)."""
+    user = User.model_validate(_plain(user))
+
+    if _use_upstash():
+        _redis().set(user_key(user.id), user.model_dump_json())
+        _redis().set(user_email_key(user.email), user.id)
+        return user
+
+    if _use_redis_cloud():
+        _redis_cloud().set(user_key(user.id), user.model_dump_json())
+        _redis_cloud().set(user_email_key(user.email), user.id)
+        return user
+
+    _USERS[user.id] = deepcopy(user)
+    _USER_EMAILS[user.email.strip().lower()] = user.id
+    return deepcopy(user)
+
+
+def get_user(user_id: str) -> User | None:
+    if _use_upstash():
+        raw = _redis().get(user_key(user_id))
+        return _validate_user(raw) if raw is not None else None
+
+    if _use_redis_cloud():
+        raw = _redis_cloud().get(user_key(user_id))
+        return _validate_user(raw) if raw is not None else None
+
+    user = _USERS.get(user_id)
+    return deepcopy(user) if user is not None else None
+
+
+def get_user_by_email(email: str) -> User | None:
+    normalized = email.strip().lower()
+
+    if _use_upstash():
+        user_id = _redis().get(user_email_key(normalized))
+        return get_user(user_id) if user_id else None
+
+    if _use_redis_cloud():
+        user_id = _redis_cloud().get(user_email_key(normalized))
+        return get_user(user_id) if user_id else None
+
+    user_id = _USER_EMAILS.get(normalized)
+    return get_user(user_id) if user_id else None
+
+
+def update_user(user: User) -> User:
+    """Overwrite an existing user record (e.g. to append an estate id)."""
+    return create_user(user)
+
+
+def create_session(user_id: str, token: str, ttl_seconds: int = SESSION_TTL_SECONDS) -> str:
+    if _use_upstash():
+        _redis().set(session_key(token), user_id, ex=ttl_seconds)
+        return token
+
+    if _use_redis_cloud():
+        _redis_cloud().set(session_key(token), user_id, ex=ttl_seconds)
+        return token
+
+    _SESSIONS[token] = user_id
+    return token
+
+
+def get_session_user_id(token: str) -> str | None:
+    if not token:
+        return None
+
+    if _use_upstash():
+        return _redis().get(session_key(token))
+
+    if _use_redis_cloud():
+        return _redis_cloud().get(session_key(token))
+
+    return _SESSIONS.get(token)
+
+
+def delete_session(token: str) -> None:
+    if not token:
+        return
+
+    if _use_upstash():
+        _redis().delete(session_key(token))
+        return
+
+    if _use_redis_cloud():
+        _redis_cloud().delete(session_key(token))
+        return
+
+    _SESSIONS.pop(token, None)
 
 
 def get_estate_state(estate_id: str = DEFAULT_ESTATE_ID) -> EstateState:
@@ -122,6 +247,44 @@ def write_alerts(estate_id: str, alerts: list[Alert | dict[str, Any]]) -> list[A
 
 def add_document(estate_id: str, document: UploadedDocument) -> EstateState:
     return merge_estate_state(estate_id, {"documents": [document]})
+
+
+def set_document_file(estate_id: str, doc_id: str, content_type: str, data: bytes) -> None:
+    """Store the original uploaded bytes so the UI can preview/download the real
+    file. Persisted as base64 JSON alongside its content type."""
+    record = json.dumps({"contentType": content_type, "data": base64.b64encode(data).decode("ascii")})
+    key = document_file_key(estate_id, doc_id)
+
+    if _use_upstash():
+        _redis().set(key, record)
+        return
+    if _use_redis_cloud():
+        _redis_cloud().set(key, record)
+        return
+    _DOC_FILES[key] = {"contentType": content_type, "data": data}
+
+
+def get_document_file(estate_id: str, doc_id: str) -> dict[str, Any] | None:
+    """Return ``{"contentType": str, "data": bytes}`` or None if not stored."""
+    key = document_file_key(estate_id, doc_id)
+
+    if _use_upstash():
+        return _decode_document_file(_redis().get(key))
+    if _use_redis_cloud():
+        return _decode_document_file(_redis_cloud().get(key))
+
+    record = _DOC_FILES.get(key)
+    return deepcopy(record) if record is not None else None
+
+
+def _decode_document_file(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    payload = json.loads(raw) if isinstance(raw, str) else raw
+    return {
+        "contentType": payload.get("contentType", "application/octet-stream"),
+        "data": base64.b64decode(payload["data"]),
+    }
 
 
 def upsert_vectors(
@@ -421,6 +584,12 @@ def _validate_estate(raw_estate: Any) -> EstateState:
     if isinstance(raw_estate, str):
         raw_estate = json.loads(raw_estate)
     return EstateState.model_validate(raw_estate)
+
+
+def _validate_user(raw_user: Any) -> User:
+    if isinstance(raw_user, str):
+        raw_user = json.loads(raw_user)
+    return User.model_validate(raw_user)
 
 
 def _plain(value: Any) -> Any:

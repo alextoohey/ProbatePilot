@@ -30,6 +30,8 @@ export const generateLetterRequestSchema = z.object({
 export const parseDocumentResponseSchema = z.object({
   estateId: z.string(),
   extraction: documentExtractionSchema,
+  documentType: z.string(),
+  needsTypeSelection: z.boolean(),
   alerts: z.array(alertSchema),
 }).strict();
 
