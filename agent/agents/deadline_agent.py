@@ -612,6 +612,12 @@ def _sync_tasks(estate: EstateState, alerts: list[Alert]) -> list[Task]:
 
     for alert in alerts:
         existing = existing_by_alert.get(alert.id) or _find_matching_task(unmatched_existing, alert)
+        if existing is not None and existing in unmatched_existing:
+            # A fuzzy-matched task can only be claimed by one alert per run —
+            # otherwise two different alerts that both mention "creditor" (say)
+            # both grab the same pre-existing checklist task, producing two
+            # Task objects with the same id in the synced list.
+            unmatched_existing.remove(existing)
         matched_ids.add(existing.id if existing else f"task-{alert.id.removeprefix('alert-')}")
         task = Task(
             id=existing.id if existing else f"task-{alert.id.removeprefix('alert-')}",

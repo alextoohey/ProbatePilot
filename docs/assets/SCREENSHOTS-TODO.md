@@ -1,18 +1,28 @@
-# Screenshots to add
+# Screenshots
 
-Not tracked in git (add real images here, then reference them from the root
-`README.md` — a few spots are already marked with HTML comments ready to
-uncomment). Aim for ~1400px wide, PNG or WebP.
+Captured against the seeded demo estate (`demo-milligan`) via a headless Chromium pass
+through the real running app — not mocked, not hand-picked from ideal state. Currently
+referenced from the root `README.md`:
 
-1. **Dashboard** — the seeded demo estate (`demo-milligan`) with its two
-   CRITICAL alerts visible. This is the single most important shot — it's
-   the whole pitch in one screen.
-2. **Chat** — a mid-conversation exchange that shows a grounded, cited
-   answer (not just a generic-looking chat bubble).
-3. **Upload** — the document drop zone, ideally mid-parse or just after a
-   successful parse showing extracted facts.
-4. **Welcome / login** — the marketing landing page, for context on the
-   overall polish level.
+- `dashboard.png` — the hero shot: seeded demo estate with its two CRITICAL alerts.
+- `documents.png` — the upload screen with the parsing checklist.
+- `chat.png` — a real, grounded RAG answer with a markdown table.
 
-Optional: a 15–30s screen-recording GIF of the full flow (upload → alert
-fires → chat about it) converts better than any single screenshot.
+`welcome.jpg` (the marketing landing page) is captured but not currently embedded in the
+README — the dashboard does more work as the lead image. Swap it in if you'd rather open
+with the landing page.
+
+## Retaking these
+
+```bash
+make dev        # agent on :8000, web on :3000
+make seed       # separate terminal
+```
+
+Then drive a headless browser through: `/welcome` → click "Try the live demo" → screenshot
+`/` (dashboard) → click "Documents" → screenshot → click "Estate chat", send a message, wait
+for the stream to finish → screenshot. Playwright works well for this; there's no committed
+script since it's a one-off tool, not part of the app.
+
+A 15–30s screen-recording GIF of the full flow (upload → alert fires → chat about it)
+would convert better than any single screenshot, if you want to go further.

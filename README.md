@@ -5,8 +5,7 @@
 Built in 24 hours at UC Berkeley AI Hackathon 2026 by a 4-person team, for the
 technology-and-social-impact track.
 
-<!-- ![ProbatePilot dashboard](docs/assets/dashboard.png) -->
-<!-- See docs/assets/SCREENSHOTS-TODO.md for the shot list -->
+![ProbatePilot dashboard — two critical alerts on the seeded demo estate](docs/assets/dashboard.png)
 
 [Run it locally in 3 commands](#quick-start) — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 to put up a live version.
@@ -43,6 +42,11 @@ legal judgment, it says so plainly instead of guessing.
   drafted from the estate's actual facts, ready to sign.
 - **It checks in on its own.** A weekly ResearchAgent watches for California probate-law
   changes; an email digest keeps the executor current without opening the app.
+
+<p float="left">
+  <img src="docs/assets/documents.png" width="49%" alt="Document upload with the parsing checklist" />
+  <img src="docs/assets/chat.png" width="49%" alt="Estate-aware chat grounded in the uploaded documents" />
+</p>
 
 ## How it works
 
