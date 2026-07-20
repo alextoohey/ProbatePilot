@@ -1,12 +1,20 @@
+"""Estate/user/session/chat/vector persistence — the domain layer.
+
+This module owns key naming, JSON encode/decode, and Pydantic validation; it
+delegates raw storage to a `KVStore` and vector search to a per-backend
+vector store (see `store/backends/`). Which backend is active is selected via
+`STORE_BACKEND` (`memory` | `upstash` | `redis_cloud`) and resolved once per
+call through `_kv()` / `_vectors()`, so tests can flip backends with
+`monkeypatch.setenv` between cases.
+"""
+
 from __future__ import annotations
 
 import base64
 import json
 import os
 import uuid
-from copy import deepcopy
 from datetime import date
-from math import sqrt
 from pathlib import Path
 from typing import Any
 
@@ -16,38 +24,87 @@ from schemas.api import SearchResult
 from schemas.auth import User
 from schemas.estate import Alert, EstateState, Executor, SavedLetter, UploadedDocument, utc_now_iso
 from seed.demo_estate import build_demo_estate
+from store.backends.kv import MemoryKVStore, RedisCloudKVStore, UpstashKVStore
+from store.backends.memory_vectors import MemoryVectorStore
+from store.backends.redis_cloud_vectors import (
+    RedisCloudVectorStore,
+    _ensure_redis_cloud_vector_dimension,  # re-exported: tests exercise this directly
+    _parse_redis_cloud_vector_matches,  # re-exported: tests exercise this directly
+    vector_set_key,  # re-exported: tests exercise this directly
+)
+from store.backends.upstash_vectors import UpstashVectorStore, chunk_id
 
+__all__ = [
+    "seed_demo_estate",
+    "get_chat_history",
+    "append_chat_messages",
+    "clear_chat_history",
+    "list_chat_sessions",
+    "create_chat_session",
+    "get_chat_session_history",
+    "append_chat_session_messages",
+    "create_user",
+    "get_user",
+    "get_user_by_email",
+    "update_user",
+    "create_session",
+    "get_session_user_id",
+    "delete_session",
+    "get_estate_state",
+    "list_estate_ids",
+    "set_estate_state",
+    "merge_estate_state",
+    "get_alerts",
+    "write_alerts",
+    "get_research_run_state",
+    "set_research_run_state",
+    "add_document",
+    "delete_letter",
+    "delete_document",
+    "set_document_file",
+    "delete_document_file",
+    "get_document_file",
+    "upsert_vectors",
+    "semantic_search",
+    "clear_estate_vectors",
+    "delete_document_vectors",
+    "chunk_id",
+    "DEFAULT_ESTATE_ID",
+]
 
 ESTATE_KEY_PREFIX = "estate:"
 USER_KEY_PREFIX = "user:"
 USER_EMAIL_KEY_PREFIX = "user_email:"
 SESSION_KEY_PREFIX = "session:"
-VECTOR_INDEX_NAME = "estate_chunks"
 DEFAULT_ESTATE_ID = "demo-milligan"
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
-
-_ESTATES: dict[str, EstateState] = {}
-_CHATS: dict[str, list[dict[str, Any]]] = {}
-_CHAT_SESSIONS: dict[str, list[dict[str, Any]]] = {}
 MAX_CHAT_MESSAGES = 200
-_VECTORS: list[dict[str, Any]] = []
-_USERS: dict[str, User] = {}
-_USER_EMAILS: dict[str, str] = {}
-_SESSIONS: dict[str, str] = {}
-_DOC_FILES: dict[str, dict[str, Any]] = {}
-_RESEARCH_RUNS: dict[str, dict[str, Any]] = {}
-_REDIS_CLIENT: Any | None = None
-_REDIS_CLOUD_CLIENT: Any | None = None
-_VECTOR_CLIENT: Any | None = None
+
 _ENV_LOADED = False
+
+# One instance per backend, created once. Each lazily opens its real client
+# (Upstash REST / redis-py) on first use, so importing this module never
+# requires network access or credentials.
+_memory_kv = MemoryKVStore()
+_upstash_kv = UpstashKVStore()
+_redis_cloud_kv = RedisCloudKVStore()
+
+_memory_vectors = MemoryVectorStore()
+_upstash_vectors = UpstashVectorStore()
+_redis_cloud_vectors = RedisCloudVectorStore(_redis_cloud_kv)
+
+
+def reset_state() -> None:
+    """Test-only: clear in-memory state and drop cached client connections
+    so each test starts from a clean, disconnected slate."""
+    _memory_kv.reset()
+    _memory_vectors.reset()
+    _upstash_kv._client = None
+    _redis_cloud_kv._client = None
 
 
 def estate_key(estate_id: str) -> str:
     return f"{ESTATE_KEY_PREFIX}{estate_id}"
-
-
-def vector_set_key(estate_id: str) -> str:
-    return f"{estate_key(estate_id)}:chunks"
 
 
 def user_key(user_id: str) -> str:
@@ -83,6 +140,24 @@ def store_backend() -> str:
     return os.getenv("STORE_BACKEND", "memory").strip().lower() or "memory"
 
 
+def _kv():
+    backend = store_backend()
+    if backend == "upstash":
+        return _upstash_kv
+    if backend == "redis_cloud":
+        return _redis_cloud_kv
+    return _memory_kv
+
+
+def _vectors():
+    backend = store_backend()
+    if backend == "upstash":
+        return _upstash_vectors
+    if backend == "redis_cloud":
+        return _redis_cloud_vectors
+    return _memory_vectors
+
+
 def seed_demo_estate() -> EstateState:
     estate = build_demo_estate()
     clear_estate_vectors(estate.id)
@@ -109,11 +184,7 @@ def _decode_chat(raw: Any) -> list[dict[str, Any]]:
 
 
 def get_chat_history(estate_id: str) -> list[dict[str, Any]]:
-    if _use_upstash():
-        return _decode_chat(_redis().get(chat_key(estate_id)))
-    if _use_redis_cloud():
-        return _decode_chat(_redis_cloud().get(chat_key(estate_id)))
-    return deepcopy(_CHATS.get(estate_id, []))
+    return _decode_chat(_kv().get(chat_key(estate_id)))
 
 
 def append_chat_messages(estate_id: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -121,26 +192,13 @@ def append_chat_messages(estate_id: str, messages: list[dict[str, Any]]) -> list
     history.extend(messages)
     if len(history) > MAX_CHAT_MESSAGES:
         history = history[-MAX_CHAT_MESSAGES:]
-
-    if _use_upstash():
-        _redis().set(chat_key(estate_id), json.dumps(history))
-    elif _use_redis_cloud():
-        _redis_cloud().set(chat_key(estate_id), json.dumps(history))
-    else:
-        _CHATS[estate_id] = deepcopy(history)
+    _kv().set(chat_key(estate_id), json.dumps(history))
     return history
 
 
 def clear_chat_history(estate_id: str) -> None:
-    if _use_upstash():
-        _redis().delete(chat_key(estate_id))
-        _redis().delete(chat_sessions_key(estate_id))
-    elif _use_redis_cloud():
-        _redis_cloud().delete(chat_key(estate_id))
-        _redis_cloud().delete(chat_sessions_key(estate_id))
-    else:
-        _CHATS.pop(estate_id, None)
-        _CHAT_SESSIONS.pop(estate_id, None)
+    _kv().delete(chat_key(estate_id))
+    _kv().delete(chat_sessions_key(estate_id))
 
 
 def _title_from_message(message: str) -> str:
@@ -191,21 +249,11 @@ def _decode_chat_sessions(raw: Any, estate_id: str) -> list[dict[str, Any]]:
 
 
 def _get_chat_sessions_raw(estate_id: str) -> list[dict[str, Any]]:
-    if _use_upstash():
-        return _decode_chat_sessions(_redis().get(chat_sessions_key(estate_id)), estate_id)
-    if _use_redis_cloud():
-        return _decode_chat_sessions(_redis_cloud().get(chat_sessions_key(estate_id)), estate_id)
-    raw = deepcopy(_CHAT_SESSIONS.get(estate_id))
-    return _decode_chat_sessions(raw, estate_id)
+    return _decode_chat_sessions(_kv().get(chat_sessions_key(estate_id)), estate_id)
 
 
 def _set_chat_sessions_raw(estate_id: str, sessions: list[dict[str, Any]]) -> None:
-    if _use_upstash():
-        _redis().set(chat_sessions_key(estate_id), json.dumps(sessions))
-    elif _use_redis_cloud():
-        _redis_cloud().set(chat_sessions_key(estate_id), json.dumps(sessions))
-    else:
-        _CHAT_SESSIONS[estate_id] = deepcopy(sessions)
+    _kv().set(chat_sessions_key(estate_id), json.dumps(sessions))
 
 
 def list_chat_sessions(estate_id: str) -> list[dict[str, Any]]:
@@ -269,17 +317,12 @@ def append_chat_session_messages(estate_id: str, session_id: str | None, message
     # Keep the original one-history key populated with the latest active chat for
     # older clients and tests that still call /chat-history without sessions.
     if not session_id or session.get("id") == session_id:
-        if _use_upstash():
-            _redis().set(chat_key(estate_id), json.dumps(history))
-        elif _use_redis_cloud():
-            _redis_cloud().set(chat_key(estate_id), json.dumps(history))
-        else:
-            _CHATS[estate_id] = deepcopy(history)
+        _kv().set(chat_key(estate_id), json.dumps(history))
     return str(session.get("id")), history
 
 
 # --------------------------------------------------------------------------- #
-# Users & sessions (same Redis store as estate state)
+# Users & sessions (same store as estate state)
 # --------------------------------------------------------------------------- #
 
 
@@ -287,47 +330,18 @@ def create_user(user: User) -> User:
     """Persist a new user and its email -> id index. Caller must ensure the
     email is not already taken (use ``get_user_by_email`` first)."""
     user = User.model_validate(_plain(user))
-
-    if _use_upstash():
-        _redis().set(user_key(user.id), user.model_dump_json())
-        _redis().set(user_email_key(user.email), user.id)
-        return user
-
-    if _use_redis_cloud():
-        _redis_cloud().set(user_key(user.id), user.model_dump_json())
-        _redis_cloud().set(user_email_key(user.email), user.id)
-        return user
-
-    _USERS[user.id] = deepcopy(user)
-    _USER_EMAILS[user.email.strip().lower()] = user.id
-    return deepcopy(user)
+    _kv().set(user_key(user.id), user.model_dump_json())
+    _kv().set(user_email_key(user.email), user.id)
+    return user
 
 
 def get_user(user_id: str) -> User | None:
-    if _use_upstash():
-        raw = _redis().get(user_key(user_id))
-        return _validate_user(raw) if raw is not None else None
-
-    if _use_redis_cloud():
-        raw = _redis_cloud().get(user_key(user_id))
-        return _validate_user(raw) if raw is not None else None
-
-    user = _USERS.get(user_id)
-    return deepcopy(user) if user is not None else None
+    raw = _kv().get(user_key(user_id))
+    return _validate_user(raw) if raw is not None else None
 
 
 def get_user_by_email(email: str) -> User | None:
-    normalized = email.strip().lower()
-
-    if _use_upstash():
-        user_id = _redis().get(user_email_key(normalized))
-        return get_user(user_id) if user_id else None
-
-    if _use_redis_cloud():
-        user_id = _redis_cloud().get(user_email_key(normalized))
-        return get_user(user_id) if user_id else None
-
-    user_id = _USER_EMAILS.get(normalized)
+    user_id = _kv().get(user_email_key(email))
     return get_user(user_id) if user_id else None
 
 
@@ -337,97 +351,45 @@ def update_user(user: User) -> User:
 
 
 def create_session(user_id: str, token: str, ttl_seconds: int = SESSION_TTL_SECONDS) -> str:
-    if _use_upstash():
-        _redis().set(session_key(token), user_id, ex=ttl_seconds)
-        return token
-
-    if _use_redis_cloud():
-        _redis_cloud().set(session_key(token), user_id, ex=ttl_seconds)
-        return token
-
-    _SESSIONS[token] = user_id
+    _kv().set(session_key(token), user_id, ex=ttl_seconds)
     return token
 
 
 def get_session_user_id(token: str) -> str | None:
     if not token:
         return None
-
-    if _use_upstash():
-        return _redis().get(session_key(token))
-
-    if _use_redis_cloud():
-        return _redis_cloud().get(session_key(token))
-
-    return _SESSIONS.get(token)
+    return _kv().get(session_key(token))
 
 
 def delete_session(token: str) -> None:
     if not token:
         return
-
-    if _use_upstash():
-        _redis().delete(session_key(token))
-        return
-
-    if _use_redis_cloud():
-        _redis_cloud().delete(session_key(token))
-        return
-
-    _SESSIONS.pop(token, None)
+    _kv().delete(session_key(token))
 
 
 def get_estate_state(estate_id: str = DEFAULT_ESTATE_ID) -> EstateState:
-    if _use_upstash():
-        raw_estate = _redis().get(estate_key(estate_id))
-        if raw_estate is None and estate_id == DEFAULT_ESTATE_ID:
+    """Raises KeyError if the estate doesn't exist (except the demo estate,
+    which is lazily seeded on first read so a fresh deploy always has
+    something to show)."""
+    raw = _kv().get(estate_key(estate_id))
+    if raw is None:
+        if estate_id == DEFAULT_ESTATE_ID:
             return seed_demo_estate()
-        if raw_estate is None:
-            raise KeyError(f"Estate state not found: {estate_id}")
-        return _validate_estate(raw_estate)
-
-    if _use_redis_cloud():
-        raw_estate = _redis_cloud().get(estate_key(estate_id))
-        if raw_estate is None and estate_id == DEFAULT_ESTATE_ID:
-            return seed_demo_estate()
-        if raw_estate is None:
-            raise KeyError(f"Estate state not found: {estate_id}")
-        return _validate_estate(raw_estate)
-
-    if estate_id not in _ESTATES and estate_id == DEFAULT_ESTATE_ID:
-        return seed_demo_estate()
-    if estate_id not in _ESTATES:
         raise KeyError(f"Estate state not found: {estate_id}")
-    return deepcopy(_ESTATES[estate_id])
+    return _validate_estate(raw)
 
 
 def list_estate_ids() -> list[str]:
-    if _use_upstash():
-        keys = _redis().keys(f"{ESTATE_KEY_PREFIX}*")
-        return sorted(_estate_id_from_key(key) for key in keys if _is_estate_state_key(str(key)))
-
-    if _use_redis_cloud():
-        keys = _redis_cloud().scan_iter(match=f"{ESTATE_KEY_PREFIX}*")
-        return sorted(_estate_id_from_key(key) for key in keys if _is_estate_state_key(str(key)))
-
-    return sorted(_ESTATES.keys())
+    keys = _kv().scan_keys(ESTATE_KEY_PREFIX)
+    return sorted(_estate_id_from_key(key) for key in keys if _is_estate_state_key(str(key)))
 
 
 def set_estate_state(estate: EstateState | dict[str, Any]) -> EstateState:
     estate = EstateState.model_validate(_plain(estate))
     estate.updatedAt = utc_now_iso()
     estate = EstateState.model_validate(estate.model_dump())
-
-    if _use_upstash():
-        _redis().set(estate_key(estate.id), estate.model_dump_json())
-        return estate
-
-    if _use_redis_cloud():
-        _redis_cloud().set(estate_key(estate.id), estate.model_dump_json())
-        return estate
-
-    _ESTATES[estate.id] = deepcopy(estate)
-    return deepcopy(estate)
+    _kv().set(estate_key(estate.id), estate.model_dump_json())
+    return estate
 
 
 def merge_estate_state(estate_id: str, partial: dict[str, Any]) -> EstateState:
@@ -464,27 +426,14 @@ def write_alerts(estate_id: str, alerts: list[Alert | dict[str, Any]]) -> list[A
 
 
 def get_research_run_state(estate_id: str) -> dict[str, Any]:
-    key = research_run_key(estate_id)
-    if _use_upstash():
-        raw = _redis().get(key)
-        return json.loads(raw) if raw else {}
-    if _use_redis_cloud():
-        raw = _redis_cloud().get(key)
-        return json.loads(raw) if raw else {}
-    return deepcopy(_RESEARCH_RUNS.get(estate_id, {}))
+    raw = _kv().get(research_run_key(estate_id))
+    return json.loads(raw) if raw else {}
 
 
 def set_research_run_state(estate_id: str, state: dict[str, Any]) -> dict[str, Any]:
     payload = _plain(state)
-    key = research_run_key(estate_id)
-    if _use_upstash():
-        _redis().set(key, json.dumps(payload))
-        return payload
-    if _use_redis_cloud():
-        _redis_cloud().set(key, json.dumps(payload))
-        return payload
-    _RESEARCH_RUNS[estate_id] = deepcopy(payload)
-    return deepcopy(payload)
+    _kv().set(research_run_key(estate_id), json.dumps(payload))
+    return payload
 
 
 def add_document(estate_id: str, document: UploadedDocument) -> EstateState:
@@ -492,7 +441,10 @@ def add_document(estate_id: str, document: UploadedDocument) -> EstateState:
 
 
 def delete_letter(estate_id: str, letter_id: str) -> SavedLetter | None:
-    estate = get_estate_state(estate_id)
+    try:
+        estate = get_estate_state(estate_id)
+    except KeyError:
+        return None
     letter = next((l for l in estate.letters if l.id == letter_id), None)
     if letter is None:
         return None
@@ -502,7 +454,10 @@ def delete_letter(estate_id: str, letter_id: str) -> SavedLetter | None:
 
 
 def delete_document(estate_id: str, doc_id: str) -> UploadedDocument | None:
-    estate = get_estate_state(estate_id)
+    try:
+        estate = get_estate_state(estate_id)
+    except KeyError:
+        return None
     document = next((doc for doc in estate.documents if doc.id == doc_id), None)
     if document is None:
         return None
@@ -523,40 +478,16 @@ def set_document_file(estate_id: str, doc_id: str, content_type: str, data: byte
     """Store the original uploaded bytes so the UI can preview/download the real
     file. Persisted as base64 JSON alongside its content type."""
     record = json.dumps({"contentType": content_type, "data": base64.b64encode(data).decode("ascii")})
-    key = document_file_key(estate_id, doc_id)
-
-    if _use_upstash():
-        _redis().set(key, record)
-        return
-    if _use_redis_cloud():
-        _redis_cloud().set(key, record)
-        return
-    _DOC_FILES[key] = {"contentType": content_type, "data": data}
+    _kv().set(document_file_key(estate_id, doc_id), record)
 
 
 def delete_document_file(estate_id: str, doc_id: str) -> None:
-    key = document_file_key(estate_id, doc_id)
-
-    if _use_upstash():
-        _redis().delete(key)
-        return
-    if _use_redis_cloud():
-        _redis_cloud().delete(key)
-        return
-    _DOC_FILES.pop(key, None)
+    _kv().delete(document_file_key(estate_id, doc_id))
 
 
 def get_document_file(estate_id: str, doc_id: str) -> dict[str, Any] | None:
     """Return ``{"contentType": str, "data": bytes}`` or None if not stored."""
-    key = document_file_key(estate_id, doc_id)
-
-    if _use_upstash():
-        return _decode_document_file(_redis().get(key))
-    if _use_redis_cloud():
-        return _decode_document_file(_redis_cloud().get(key))
-
-    record = _DOC_FILES.get(key)
-    return deepcopy(record) if record is not None else None
+    return _decode_document_file(_kv().get(document_file_key(estate_id, doc_id)))
 
 
 def _decode_document_file(raw: Any) -> dict[str, Any] | None:
@@ -569,6 +500,11 @@ def _decode_document_file(raw: Any) -> dict[str, Any] | None:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Vector search
+# --------------------------------------------------------------------------- #
+
+
 def upsert_vectors(
     estate_id: str,
     chunks: list[str],
@@ -579,7 +515,7 @@ def upsert_vectors(
     if len(chunks) != len(embeddings):
         raise ValueError("chunks and embeddings must have the same length")
 
-    vector_rows = [
+    rows = [
         {
             "id": chunk_id(estate_id, source, index),
             "estateId": estate_id,
@@ -592,268 +528,19 @@ def upsert_vectors(
         for index, chunk in enumerate(chunks)
     ]
 
-    if _use_upstash():
-        vectors = [
-            (
-                row["id"],
-                row["embedding"],
-                {
-                    "id": row["id"],
-                    "estateId": row["estateId"],
-                    "text": row["text"],
-                    "source": row["source"],
-                    "documentType": row["documentType"],
-                    "chunkIndex": row["chunkIndex"],
-                },
-            )
-            for row in vector_rows
-        ]
-        if vectors:
-            _vector().upsert(vectors=vectors)
-        return len(vectors)
-
-    if _use_redis_cloud():
-        return _upsert_redis_cloud_vectors(estate_id, vector_rows)
-
-    for index, _chunk in enumerate(chunks):
-        vector_id = chunk_id(estate_id, source, index)
-        _VECTORS[:] = [item for item in _VECTORS if item["id"] != vector_id]
-        _VECTORS.append(vector_rows[index])
-    return len(chunks)
+    return _vectors().upsert(estate_id, rows)
 
 
 def semantic_search(estate_id: str, embedding: list[float], top_k: int = 5) -> list[SearchResult]:
-    if _use_upstash():
-        query_result = _vector().query(
-            vector=embedding,
-            top_k=top_k,
-            include_metadata=True,
-            filter=f"estateId = '{estate_id}'",
-        )
-        matches = getattr(query_result, "matches", query_result)
-        return [_search_result_from_upstash(match, estate_id) for match in matches]
-
-    if _use_redis_cloud():
-        return _semantic_search_redis_cloud(estate_id, embedding, top_k)
-
-    matches = [item for item in _VECTORS if item["estateId"] == estate_id]
-    ranked = sorted(matches, key=lambda item: _cosine_similarity(embedding, item["embedding"]), reverse=True)
-    return [
-        SearchResult(
-            text=item["text"],
-            score=_cosine_similarity(embedding, item["embedding"]),
-            source=item["source"],
-            documentType=item.get("documentType"),
-            chunkIndex=item.get("chunkIndex"),
-            estateId=item["estateId"],
-        )
-        for item in ranked[:top_k]
-    ]
+    return _vectors().search(estate_id, embedding, top_k)
 
 
 def clear_estate_vectors(estate_id: str) -> int:
-    if _use_upstash():
-        return 0
-
-    if _use_redis_cloud():
-        return int(_redis_cloud().delete(vector_set_key(estate_id)))
-
-    before = len(_VECTORS)
-    _VECTORS[:] = [item for item in _VECTORS if item["estateId"] != estate_id]
-    return before - len(_VECTORS)
+    return _vectors().clear_estate(estate_id)
 
 
 def delete_document_vectors(estate_id: str, source: str, max_chunks: int = 100) -> int:
-    if _use_upstash():
-        ids = [chunk_id(estate_id, source, index) for index in range(max_chunks)]
-        try:
-            _vector().delete(ids)
-        except TypeError:
-            _vector().delete(ids=ids)
-        return len(ids)
-
-    if _use_redis_cloud():
-        key = vector_set_key(estate_id)
-        removed = 0
-        redis_client = _redis_cloud()
-        for index in range(max_chunks):
-            removed += int(redis_client.execute_command("VREM", key, chunk_id(estate_id, source, index)) or 0)
-        return removed
-
-    before = len(_VECTORS)
-    _VECTORS[:] = [item for item in _VECTORS if not (item["estateId"] == estate_id and item.get("source") == source)]
-    return before - len(_VECTORS)
-
-
-def chunk_id(estate_id: str, source: str | None, chunk_index: int) -> str:
-    return f"{estate_id}:{source or 'document'}:{chunk_index}"
-
-
-def _upsert_redis_cloud_vectors(estate_id: str, vector_rows: list[dict[str, Any]]) -> int:
-    if not vector_rows:
-        return 0
-
-    redis_client = _redis_cloud()
-    key = vector_set_key(estate_id)
-    dimension = len(vector_rows[0]["embedding"])
-    _ensure_redis_cloud_vector_dimension(redis_client, key, dimension)
-
-    pipeline = redis_client.pipeline(transaction=False)
-    for row in vector_rows:
-        metadata = {
-            "id": row["id"],
-            "estateId": row["estateId"],
-            "text": row["text"],
-            "source": row["source"],
-            "documentType": row["documentType"],
-            "chunkIndex": row["chunkIndex"],
-        }
-        pipeline.execute_command(
-            "VADD",
-            key,
-            "VALUES",
-            len(row["embedding"]),
-            *row["embedding"],
-            row["id"],
-            "SETATTR",
-            json.dumps(metadata),
-        )
-    pipeline.execute()
-    return len(vector_rows)
-
-
-def _semantic_search_redis_cloud(estate_id: str, embedding: list[float], top_k: int) -> list[SearchResult]:
-    if not embedding:
-        return []
-
-    key = vector_set_key(estate_id)
-    if not _redis_cloud().exists(key):
-        return []
-
-    raw_matches = _redis_cloud().execute_command(
-        "VSIM",
-        key,
-        "VALUES",
-        len(embedding),
-        *embedding,
-        "WITHSCORES",
-        "WITHATTRIBS",
-        "COUNT",
-        top_k,
-    )
-    return _parse_redis_cloud_vector_matches(raw_matches, estate_id)
-
-
-def _ensure_redis_cloud_vector_dimension(redis_client: Any, key: str, dimension: int) -> None:
-    if not redis_client.exists(key):
-        return
-
-    existing_dimension = int(redis_client.execute_command("VDIM", key))
-    if existing_dimension != dimension:
-        redis_client.delete(key)
-
-
-def _parse_redis_cloud_vector_matches(raw_matches: Any, estate_id: str) -> list[SearchResult]:
-    if isinstance(raw_matches, dict):
-        return [
-            _search_result_from_redis_cloud_attributes(score_and_attributes[0], score_and_attributes[1], estate_id)
-            for score_and_attributes in raw_matches.values()
-        ]
-
-    results: list[SearchResult] = []
-    index = 0
-    while index < len(raw_matches):
-        _element_id = raw_matches[index]
-        score = float(raw_matches[index + 1])
-        results.append(_search_result_from_redis_cloud_attributes(score, raw_matches[index + 2], estate_id))
-        index += 3
-    return results
-
-
-def _search_result_from_redis_cloud_attributes(score: float, raw_attributes: str | None, estate_id: str) -> SearchResult:
-    attributes = json.loads(raw_attributes or "{}")
-    return SearchResult(
-        text=attributes.get("text", ""),
-        score=float(score),
-        source=attributes.get("source"),
-        documentType=attributes.get("documentType"),
-        chunkIndex=attributes.get("chunkIndex"),
-        estateId=attributes.get("estateId", estate_id),
-    )
-
-
-def _cosine_similarity(left: list[float], right: list[float]) -> float:
-    if not left or not right:
-        return 0.0
-    dot = sum(a * b for a, b in zip(left, right))
-    left_norm = sqrt(sum(a * a for a in left))
-    right_norm = sqrt(sum(b * b for b in right))
-    if left_norm == 0 or right_norm == 0:
-        return 0.0
-    return dot / (left_norm * right_norm)
-
-
-def _use_upstash() -> bool:
-    return store_backend() == "upstash"
-
-
-def _use_redis_cloud() -> bool:
-    return store_backend() == "redis_cloud"
-
-
-def _redis() -> Any:
-    global _REDIS_CLIENT
-    if _REDIS_CLIENT is None:
-        try:
-            from upstash_redis import Redis
-        except ImportError as exc:
-            raise RuntimeError("Install upstash-redis or set STORE_BACKEND=memory") from exc
-
-        url = os.getenv("UPSTASH_REDIS_REST_URL")
-        token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
-        if not url or not token:
-            raise RuntimeError("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required")
-        _REDIS_CLIENT = Redis(url=url, token=token)
-    return _REDIS_CLIENT
-
-
-def _redis_cloud() -> Any:
-    global _REDIS_CLOUD_CLIENT
-    if _REDIS_CLOUD_CLIENT is None:
-        try:
-            import redis
-        except ImportError as exc:
-            raise RuntimeError("Install redis or set STORE_BACKEND=memory") from exc
-
-        redis_url = os.getenv("REDIS_URL")
-        if not redis_url:
-            raise RuntimeError("REDIS_URL is required when STORE_BACKEND=redis_cloud")
-
-        _REDIS_CLOUD_CLIENT = redis.Redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=2.0,
-            socket_timeout=5.0,
-            retry_on_timeout=True,
-            health_check_interval=30,
-        )
-    return _REDIS_CLOUD_CLIENT
-
-
-def _vector() -> Any:
-    global _VECTOR_CLIENT
-    if _VECTOR_CLIENT is None:
-        try:
-            from upstash_vector import Index
-        except ImportError as exc:
-            raise RuntimeError("Install upstash-vector or set STORE_BACKEND=memory") from exc
-
-        url = os.getenv("UPSTASH_VECTOR_REST_URL")
-        token = os.getenv("UPSTASH_VECTOR_REST_TOKEN")
-        if not url or not token:
-            raise RuntimeError("UPSTASH_VECTOR_REST_URL and UPSTASH_VECTOR_REST_TOKEN are required")
-        _VECTOR_CLIENT = Index(url=url, token=token)
-    return _VECTOR_CLIENT
+    return _vectors().delete_source(estate_id, source, max_chunks)
 
 
 def _load_env_file() -> None:
@@ -963,26 +650,4 @@ def _blank_estate_state(estate_id: str, partial: dict[str, Any] | None = None) -
             email=executor_payload.get("email") or "",
         ),
         phase=partial.get("phase") or 1,
-    )
-
-
-def _search_result_from_upstash(match: Any, estate_id: str) -> SearchResult:
-    metadata = getattr(match, "metadata", None)
-    if metadata is None and isinstance(match, dict):
-        metadata = match.get("metadata", {})
-    metadata = metadata or {}
-    data = getattr(match, "data", None)
-    if data is None and isinstance(match, dict):
-        data = match.get("data")
-    score = getattr(match, "score", None)
-    if score is None and isinstance(match, dict):
-        score = match.get("score", 0.0)
-
-    return SearchResult(
-        text=metadata.get("text") or data or "",
-        score=float(score or 0.0),
-        source=metadata.get("source"),
-        documentType=metadata.get("documentType"),
-        chunkIndex=metadata.get("chunkIndex"),
-        estateId=metadata.get("estateId", estate_id),
     )
