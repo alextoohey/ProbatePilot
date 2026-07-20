@@ -44,7 +44,7 @@ Equivalent direct command:
 ```bash
 cd agent
 uv run python -m evals.deadline_next_steps_quality \
-  --project executor-ai-agent \
+  --project probatepilot-agent \
   --limit 500 \
   --concurrency 3
 ```

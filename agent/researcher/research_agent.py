@@ -293,7 +293,7 @@ def _alert_from_finding(finding: ResearchFinding, checked_at: str) -> Alert:
         steps=[
             "Open the source and save a copy for the estate file.",
             "Ask the estate attorney whether this changes your next step or deadline.",
-            "Update Executor AI after your attorney confirms the impact.",
+            "Update ProbatePilot after your attorney confirms the impact.",
         ],
         createdAt=checked_at,
         dismissed=False,

@@ -1,2 +1,2 @@
-"""Executor AI Python agent service."""
+"""ProbatePilot Python agent service."""
 

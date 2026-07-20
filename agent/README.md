@@ -45,7 +45,7 @@ Start a Phoenix server on `http://localhost:6006`, or configure Phoenix Cloud in
 
 ```bash
 PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
-PHOENIX_PROJECT_NAME=executor-ai-agent
+PHOENIX_PROJECT_NAME=probatepilot-agent
 PHOENIX_API_KEY=  # required only when the Phoenix endpoint requires authentication
 PHOENIX_CAPTURE_LLM_CONTENT=true
 ```

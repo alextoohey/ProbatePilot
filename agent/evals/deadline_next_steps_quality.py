@@ -18,7 +18,7 @@ DEADLINE_SPAN_NAME = "deadline_agent.run"
 CONTEXT_COLUMN = "attributes.deadline_agent.evaluation_context"
 OUTPUT_COLUMN = "attributes.deadline_agent.evaluation_output"
 
-DEADLINE_NEXT_STEPS_QUALITY_PROMPT = """You are evaluating Executor AI's DeadlineAgent, a California probate and estate administration assistant.
+DEADLINE_NEXT_STEPS_QUALITY_PROMPT = """You are evaluating ProbatePilot's DeadlineAgent, a California probate and estate administration assistant.
 
 Determine whether the agent surfaced the correct next actions and prioritized them appropriately. Judge only from the supplied estate evidence and deterministic probate-rule output. Do not add outside facts or legal assumptions.
 
@@ -145,7 +145,7 @@ def evaluation_dataframe(spans: pd.DataFrame) -> pd.DataFrame:
 async def run(args: argparse.Namespace) -> int:
     load_dotenv(".env")
     base_url = phoenix_base_url(args.base_url)
-    project = args.project or os.getenv("PHOENIX_PROJECT_NAME", "executor-ai-agent")
+    project = args.project or os.getenv("PHOENIX_PROJECT_NAME", "probatepilot-agent")
     provider = args.provider or os.getenv("PHOENIX_EVAL_PROVIDER", "anthropic")
     model = args.model or os.getenv("PHOENIX_EVAL_MODEL", "claude-sonnet-4-6")
     api_key = os.getenv("PHOENIX_API_KEY") or None

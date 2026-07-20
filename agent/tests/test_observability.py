@@ -47,7 +47,7 @@ def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) 
     monkeypatch.setattr(phoenix, "AnthropicInstrumentor", FakeInstrumentor)
     monkeypatch.setattr(phoenix, "OpenAIInstrumentor", FakeInstrumentor)
     monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "https://app.phoenix.arize.com/s/test-space")
-    monkeypatch.setenv("PHOENIX_PROJECT_NAME", "executor-ai-test")
+    monkeypatch.setenv("PHOENIX_PROJECT_NAME", "probatepilot-test")
     monkeypatch.setenv("PHOENIX_CAPTURE_LLM_CONTENT", "true")
     # Explicit Phoenix configuration must win over stale shell/deployment flags.
     monkeypatch.setenv("OPENINFERENCE_HIDE_INPUTS", "true")
@@ -58,9 +58,9 @@ def test_init_tracing_registers_phoenix_and_both_llm_instrumentors(monkeypatch) 
     phoenix.init_tracing()
 
     assert register_args["endpoint"] == "https://app.phoenix.arize.com/s/test-space/v1/traces"
-    assert register_args["project_name"] == "executor-ai-test"
+    assert register_args["project_name"] == "probatepilot-test"
     assert register_args["protocol"] == "http/protobuf"
-    assert register_args["tracer_name"] == "executor-ai.agent"
+    assert register_args["tracer_name"] == "probatepilot.agent"
     assert len(instrumentation_calls) == 2
     for call in instrumentation_calls:
         assert call["config"].hide_inputs is False

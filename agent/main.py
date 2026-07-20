@@ -82,7 +82,7 @@ from store.redis_client import (
 
 
 LOGGER = logging.getLogger(__name__)
-app = FastAPI(title="Executor AI Agent")
+app = FastAPI(title="ProbatePilot Agent")
 
 
 @app.on_event("startup")

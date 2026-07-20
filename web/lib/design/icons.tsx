@@ -1,4 +1,4 @@
-// Inline Lucide-style line icons (stroke 1.75, round caps) for the Executor AI UI.
+// Inline Lucide-style line icons (stroke 1.75, round caps) for the ProbatePilot UI.
 // Ported from the design system's ui_kits/web/icons.jsx (window.ExecutorIcons).
 import React from "react";
 

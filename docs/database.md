@@ -1,6 +1,6 @@
 # Database Contract
 
-Executor AI uses Redis as the shared database:
+ProbatePilot uses Redis as the shared database:
 
 - Redis KV stores canonical estate state (and bcrypt-hashed accounts / sessions).
 - Redis vector search stores embedded document chunks for RAG and agent memory.

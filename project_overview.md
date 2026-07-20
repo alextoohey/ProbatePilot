@@ -1,13 +1,13 @@
-# Executor AI — Project Overview
+# ProbatePilot — Project Overview
 
 ## 1. The Product
 
-Executor AI is an AI executor assistant that prevents executors from making
+ProbatePilot is an AI executor assistant that prevents executors from making
 expensive legal and financial mistakes during estate administration. It parses estate
 documents into a live intelligence graph and proactively alerts the executor *before*
 deadline violations and liability triggers occur — not after.
 
-The core insight: most AI products answer questions. Executor AI tells the executor what
+The core insight: most AI products answer questions. ProbatePilot tells the executor what
 they **don't know to ask**, before it costs them.
 
 ### One-sentence pitch
@@ -109,7 +109,7 @@ memory.** Each team member works mostly in one language.
 ### Main track
 - **Ddoski's World (social impact).** Estate administration is a systemic-inequity
   problem: families without money for a probate attorney spend ~180 hours and make costly
-  mistakes nobody warned them about. Executor AI gives them an expert in their corner. This
+  mistakes nobody warned them about. ProbatePilot gives them an expert in their corner. This
   is also squarely the Anthropic theme of "economic opportunity / shifting what's possible
   for people."
 
@@ -135,7 +135,7 @@ memory.** Each team member works mostly in one language.
 ## 4. Repository Structure
 
 ```
-clearpath-estate/
+probatepilot/
 ├── CLAUDE.md
 ├── project_overview.md
 ├── hackathon_tracks_and_prizes.md
@@ -417,10 +417,10 @@ The canonical object is `build_demo_estate()` in `agent/seed/demo_estate.py`; a
 
 ## 11. Positioning
 
-**Before Executor AI:** Dana spends 180 hours, makes three costly mistakes, pays $4,200 in
+**Before ProbatePilot:** Dana spends 180 hours, makes three costly mistakes, pays $4,200 in
 unexpected fees, and nobody ever told her the rules that would have prevented all of it.
 
-**After Executor AI:** Dana uploads three documents. The AI reconstructs her estate. The
+**After ProbatePilot:** Dana uploads three documents. The AI reconstructs her estate. The
 agent tells her the next three actions. It catches the mistake before it happens.
 
 Every architectural decision serves that story. Nothing that doesn't serve it gets built

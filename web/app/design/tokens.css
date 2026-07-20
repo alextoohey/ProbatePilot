@@ -1,5 +1,5 @@
-/* ── Executor AI — Design tokens (ported from the design system) ──────────
-   Source of truth: claude.ai/design "Executor AI Design System" → tokens/.
+/* ── ProbatePilot — Design tokens (ported from the design system) ──────────
+   Source of truth: claude.ai/design "ProbatePilot Design System" → tokens/.
    Brought in verbatim as global CSS so components can use var(--token) exactly
    as the prototype did. Fonts are loaded via the Google Fonts @import below. */
 

@@ -1,5 +1,5 @@
 {
-  "name": "clearpath-estate-web",
+  "name": "probatepilot-web",
   "private": true,
   "scripts": {
     "dev": "next dev",

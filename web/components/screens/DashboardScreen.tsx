@@ -59,7 +59,7 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
             Let's set up the estate of {cleanDashboardText(estate.deceasedName)}
           </h1>
           <p style={{ margin: "8px 0 0", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
-            You're the {cleanDashboardText(estate.role.toLowerCase())} for this {cleanDashboardText(estate.state)} estate in {cleanDashboardText(estate.county)} County. Add a few documents and Executor AI will build the estate and start tracking deadlines for you.
+            You're the {cleanDashboardText(estate.role.toLowerCase())} for this {cleanDashboardText(estate.state)} estate in {cleanDashboardText(estate.county)} County. Add a few documents and ProbatePilot will build the estate and start tracking deadlines for you.
           </p>
         </header>
         <Card tint padded>

@@ -17,20 +17,20 @@ const STEP_LABELS: Record<number, string> = { 1: "Your account", 2: "Who you're 
 
 function Wordmark() {
   return (
-    <svg width="142" height="30" viewBox="0 0 300 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Executor AI">
+    <svg width="160" height="30" viewBox="0 0 340 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ProbatePilot">
       <rect width="64" height="64" rx="14" fill="#245038" />
       <path d="M16 44 L28 32 L37 39 L48 22" stroke="#F1F7F3" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="16" cy="44" r="3.6" fill="#6BA883" />
       <circle cx="48" cy="22" r="4.6" fill="#F1F7F3" />
-      <text x="82" y="41" fontFamily="Newsreader, Georgia, serif" fontSize="32" fontWeight="600" fill="#1F2933" letterSpacing="-0.5">Executor</text>
-      <text x="232" y="41" fontFamily="'Hanken Grotesk', sans-serif" fontSize="32" fontWeight="700" fill="#245038" letterSpacing="-0.5">AI</text>
+      <text x="82" y="41" fontFamily="Newsreader, Georgia, serif" fontSize="32" fontWeight="600" fill="#1F2933" letterSpacing="-0.5">Probate</text>
+      <text x="220" y="41" fontFamily="'Hanken Grotesk', sans-serif" fontSize="32" fontWeight="700" fill="#245038" letterSpacing="-0.5">Pilot</text>
     </svg>
   );
 }
 
 function LogoButton({ onClick, style }: { onClick: () => void; style?: React.CSSProperties }) {
   return (
-    <button onClick={onClick} aria-label="Executor AI home" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "inline-flex", ...style }}>
+    <button onClick={onClick} aria-label="ProbatePilot home" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "inline-flex", ...style }}>
       <Wordmark />
     </button>
   );
@@ -44,7 +44,7 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: "var(--tex
 const errorBox: React.CSSProperties = { margin: "16px 0 0", color: "var(--critical-text)", fontSize: "var(--text-sm)", background: "var(--critical-bg)", border: "1px solid var(--critical-border)", borderRadius: "var(--radius-md)", padding: "8px 12px" };
 const asideStyle: React.CSSProperties = { flex: "1 1 44%", maxWidth: 560, minWidth: 0, background: "var(--surface-tint)", borderRight: "1px solid var(--border-subtle)", padding: 48, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 40 };
 const mainPaneStyle: React.CSSProperties = { flex: "1 1 56%", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 32px" };
-const disclaimer = "Information, not legal advice. Executor AI is not a law firm.";
+const disclaimer = "Information, not legal advice. ProbatePilot is not a law firm.";
 const welcomeHeroPhoto = "/assets/welcome-family-advisor.jpg";
 
 function firstName(full: string) {
@@ -187,7 +187,7 @@ export function AuthLanding({
               <div style={{ maxWidth: 690 }}>
                 <p style={{ margin: "0 0 18px", fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "var(--tracking-caps)", textTransform: "uppercase", color: "rgba(241,247,243,0.84)" }}>The expert in your corner</p>
                 <h1 style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: "var(--text-5xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", lineHeight: "var(--leading-tight)", color: "var(--paper-50)", textWrap: "balance", textShadow: "0 2px 24px rgba(0,0,0,0.28)" }}>You shouldn&apos;t have to learn probate law while you&apos;re grieving.</h1>
-                <p style={{ margin: "0 0 32px", fontSize: "var(--text-md)", lineHeight: "var(--leading-relaxed)", color: "rgba(241,247,243,0.88)", maxWidth: 610, textShadow: "0 1px 18px rgba(0,0,0,0.22)" }}>Executor AI reads your documents, tracks every deadline, and tells you the one thing to do next, before a missed date can cost you. Plain English, always.</p>
+                <p style={{ margin: "0 0 32px", fontSize: "var(--text-md)", lineHeight: "var(--leading-relaxed)", color: "rgba(241,247,243,0.88)", maxWidth: 610, textShadow: "0 1px 18px rgba(0,0,0,0.22)" }}>ProbatePilot reads your documents, tracks every deadline, and tells you the one thing to do next, before a missed date can cost you. Plain English, always.</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
                 <Button variant="primary" size="lg" onClick={() => go("signup")}>Create your account</Button>
                 <Button variant="secondary" size="lg" onClick={() => go("login")} style={{ background: "rgba(255,255,255,0.9)", borderColor: "rgba(255,255,255,0.74)" }}>I already have an account</Button>
@@ -201,7 +201,7 @@ export function AuthLanding({
               {[
                 {
                   title: "Document intelligence",
-                  body: "Upload a will, a deed, a bank statement. Executor AI pulls out the assets, debts, beneficiaries, and dates into one living picture of the estate.",
+                  body: "Upload a will, a deed, a bank statement. ProbatePilot pulls out the assets, debts, beneficiaries, and dates into one living picture of the estate.",
                   icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>),
                 },
                 {
@@ -211,7 +211,7 @@ export function AuthLanding({
                 },
                 {
                   title: "Deadlines, before they pass",
-                  body: "Executor AI reasons over probate rules and surfaces the next action, ranked by urgency and what it costs if missed.",
+                  body: "ProbatePilot reasons over probate rules and surfaces the next action, ranked by urgency and what it costs if missed.",
                   icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></svg>),
                 },
               ].map((f) => (
@@ -232,8 +232,8 @@ export function AuthLanding({
           </section>
 
           <footer style={{ maxWidth: "var(--container-lg)", margin: "0 auto", padding: 32, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>© 2026 Executor AI</span>
-            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>Executor AI provides information, not legal advice. It is not a law firm.</span>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>© 2026 ProbatePilot</span>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>ProbatePilot provides information, not legal advice. It is not a law firm.</span>
           </footer>
         </div>
       )}
@@ -274,7 +274,7 @@ export function AuthLanding({
               <Button variant="primary" size="lg" fullWidth onClick={login} disabled={busy} style={{ marginTop: 24 }}>{busy ? "Logging in…" : "Log in"}</Button>
 
               <p style={{ margin: "20px 0 0", textAlign: "center", fontSize: "var(--text-base)", color: "var(--text-muted)" }}>
-                New to Executor AI? <button type="button" onClick={() => go("signup")} style={{ background: "none", border: "none", color: "var(--text-link)", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)", fontWeight: 600, cursor: "pointer", padding: 0, textDecoration: "underline", textUnderlineOffset: "2px" }}>Create an account</button>
+                New to ProbatePilot? <button type="button" onClick={() => go("signup")} style={{ background: "none", border: "none", color: "var(--text-link)", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)", fontWeight: 600, cursor: "pointer", padding: 0, textDecoration: "underline", textUnderlineOffset: "2px" }}>Create an account</button>
               </p>
             </div>
           </main>
@@ -353,7 +353,7 @@ export function AuthLanding({
                   {step === 3 && (
                     <div>
                       <h1 style={{ margin: "0 0 6px", fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", lineHeight: "var(--leading-tight)", color: "var(--text-strong)" }}>About the estate</h1>
-                      <p style={{ margin: "0 0 24px", fontSize: "var(--text-base)", color: "var(--text-muted)", lineHeight: "var(--leading-normal)" }}>Probate rules vary by state. This lets Executor AI track the right deadlines for you.</p>
+                      <p style={{ margin: "0 0 24px", fontSize: "var(--text-base)", color: "var(--text-muted)", lineHeight: "var(--leading-normal)" }}>Probate rules vary by state. This lets ProbatePilot track the right deadlines for you.</p>
                       <div style={{ display: "grid", gap: 16 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                           <Select label="State of probate" value={estState} onChange={(e) => setEstState(e.target.value)} options={PROBATE_STATES} />
@@ -387,7 +387,7 @@ export function AuthLanding({
                     <Check size={28} stroke="currentColor" width={2.25} />
                   </div>
                   <h1 style={{ margin: "0 0 8px", fontFamily: "var(--font-display)", fontSize: "var(--text-3xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", lineHeight: "var(--leading-tight)", color: "var(--text-strong)" }}>{successHeadline}</h1>
-                  <p style={{ margin: "0 0 28px", fontSize: "var(--text-base)", color: "var(--text-muted)", lineHeight: "var(--leading-relaxed)" }}>Upload a document or two and Executor AI will start building the picture of the estate, and watching the deadlines so you don&apos;t have to.</p>
+                  <p style={{ margin: "0 0 28px", fontSize: "var(--text-base)", color: "var(--text-muted)", lineHeight: "var(--leading-relaxed)" }}>Upload a document or two and ProbatePilot will start building the picture of the estate, and watching the deadlines so you don&apos;t have to.</p>
                   <Button variant="primary" size="lg" onClick={() => onEnterApp?.()}>Go to your dashboard</Button>
                 </div>
               )}

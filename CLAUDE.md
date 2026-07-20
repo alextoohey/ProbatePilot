@@ -1,21 +1,13 @@
-# OpenWolf
-
-@.wolf/OPENWOLF.md
-
-This project uses OpenWolf for context management. Read and follow .wolf/OPENWOLF.md every session. Check .wolf/cerebrum.md before generating code. Check .wolf/anatomy.md before reading files.
-
-
-# Executor AI — Claude Instructions
+# ProbatePilot — Claude Instructions
 
 ## What This Is
-An AI executor assistant. It parses estate documents into a live state graph, then
-proactively alerts the executor *before* probate deadlines and liability triggers are
+An AI copilot for estate executors. It parses estate documents into a live state graph,
+then proactively alerts the executor *before* probate deadlines and liability triggers are
 missed. The differentiator is a real **agent** — the DeadlineAgent — that reasons over
 estate state against California probate law and surfaces the next action before the
-executor knows to ask. Built with Claude for a 24-hour hackathon.
+executor knows to ask. Originally built at UC Berkeley AI Hackathon 2026 in 24 hours.
 
-Full project detail: [project_overview.md](project_overview.md)
-Tracks & sponsors: [hackathon_tracks_and_prizes.md](hackathon_tracks_and_prizes.md)
+Full project detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
@@ -171,7 +163,7 @@ Alert (output of DeadlineAgent)
   title, body, rule, daysRemaining?, actionRequired, createdAt, dismissed
 ```
 
-Full field-level definitions live in [project_overview.md](project_overview.md#core-data-shapes).
+Full field-level definitions live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#core-data-shapes).
 
 ---
 
@@ -191,7 +183,7 @@ UPSTASH_REDIS_REST_TOKEN=
 UPSTASH_VECTOR_REST_URL=
 UPSTASH_VECTOR_REST_TOKEN=
 PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
-PHOENIX_PROJECT_NAME=executor-ai-agent
+PHOENIX_PROJECT_NAME=probatepilot-agent
 PHOENIX_API_KEY=
 PHOENIX_EVAL_PROVIDER=anthropic         # DeadlineAgent eval judge
 PHOENIX_EVAL_MODEL=claude-sonnet-4-6
@@ -223,7 +215,7 @@ Designed to fire live during the demo (exact day counts depend on the run date):
 2. **CRITICAL** — DE-160 Inventory & Appraisal outstanding with no property appraisal on
    the Berkeley home or the Honda Civic.
 
-Full seed object: [project_overview.md](project_overview.md#demo-scenario).
+Full seed object: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#demo-scenario).
 
 ---
 
@@ -243,12 +235,6 @@ Full seed object: [project_overview.md](project_overview.md#demo-scenario).
 
 ---
 
-## Team Division
-- **Member 1 (Alex)** — Document Intelligence (Python): Claude parsers, embeddings,
-  parse pipeline → [team/member1-document-intelligence.md](team/member1-document-intelligence.md)
-- **Member 2** — Data & Contracts (Python + TS): Redis, Pydantic/Zod/TS schemas, estate
-  state, seed data → [team/member2-data-layer.md](team/member2-data-layer.md)
-- **Member 3** — DeadlineAgent + Reasoning (Python): agent loop, rules engine, chat RAG,
-  letters, Phoenix → [team/member3-deadline-agent.md](team/member3-deadline-agent.md)
-- **Member 4** — Frontend + Voice (TS): all UI, Deepgram, Sentry, BFF proxy
-  → [team/member4-frontend-chat-voice.md](team/member4-frontend-chat-voice.md)
+## Origin
+Built by a 4-person team at UC Berkeley AI Hackathon 2026 in 24 hours. See the README
+for full credits.

@@ -59,7 +59,7 @@ def test_phoenix_base_url_accepts_collector_url(monkeypatch) -> None:
     monkeypatch.delenv("PHOENIX_BASE_URL", raising=False)
     monkeypatch.setenv(
         "PHOENIX_COLLECTOR_ENDPOINT",
-        "https://app.phoenix.arize.com/s/executor-ai/v1/traces",
+        "https://app.phoenix.arize.com/s/probatepilot/v1/traces",
     )
 
-    assert phoenix_base_url() == "https://app.phoenix.arize.com/s/executor-ai"
+    assert phoenix_base_url() == "https://app.phoenix.arize.com/s/probatepilot"

@@ -1,4 +1,4 @@
-# ClearPath Estate — Dev Commands
+# ProbatePilot — Dev Commands
 # Run from the repo root.
 
 .PHONY: install install-agent install-web dev dev-agent dev-web seed eval-deadline test test-agent test-web-contracts typecheck lint help

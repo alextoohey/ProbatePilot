@@ -15,7 +15,7 @@ _ANTHROPIC_INSTRUMENTED = False
 _OPENAI_INSTRUMENTED = False
 
 DEFAULT_PHOENIX_COLLECTOR_ENDPOINT = "http://localhost:6006/v1/traces"
-DEFAULT_PHOENIX_PROJECT_NAME = "executor-ai-agent"
+DEFAULT_PHOENIX_PROJECT_NAME = "probatepilot-agent"
 
 
 class _NoopSpan:
@@ -82,7 +82,7 @@ def init_tracing() -> None:
             protocol="http/protobuf",
             verbose=False,
         )
-        _TRACER = provider.get_tracer("executor-ai.agent")
+        _TRACER = provider.get_tracer("probatepilot.agent")
         _TRACING_ENABLED = True
     except Exception:  # pragma: no cover - defensive
         LOGGER.exception("Failed to initialize Phoenix tracing.")

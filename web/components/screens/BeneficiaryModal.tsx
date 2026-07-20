@@ -1,5 +1,5 @@
 "use client";
-// Beneficiary profile, more detail per the will (not an Executor AI account).
+// Beneficiary profile, more detail per the will (not an ProbatePilot account).
 import React from "react";
 import { Input, Select, Button, Avatar } from "@/components/ds";
 import type { Beneficiary } from "@/lib/design/data";

@@ -1,6 +1,6 @@
 # Web App
 
-Next.js 14 frontend for Executor AI: auth (login / register), dashboard, estate-aware
+Next.js 14 frontend for ProbatePilot: auth (login / register), dashboard, estate-aware
 chat, document upload, voice, and generated letters. It talks to the Python agent only
 through a thin Sentry-wrapped proxy (`app/api/agent/[...path]`) plus dedicated auth and
 voice routes.

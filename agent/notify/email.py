@@ -17,10 +17,10 @@ SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
 
 # A plain signature block, so every notification closes like a note from a real
 # person on an estate-support team rather than an automated dump.
-SIGNATURE = "Warmly,\nThe Executor AI team"
+SIGNATURE = "Warmly,\nThe ProbatePilot team"
 FOOTER = (
     "—\n"
-    "Executor AI · Estate administration support\n"
+    "ProbatePilot · Estate administration support\n"
     "You're receiving this because you're the named executor on this estate. "
     "Just reply to this email if you'd like a hand with anything."
 )

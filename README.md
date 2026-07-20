@@ -1,4 +1,4 @@
-# Executor AI
+# ProbatePilot
 
 > The AI that prevents executors from making expensive mistakes — by building a live
 > intelligence graph of the estate and running a true agent that alerts *before* probate
@@ -14,7 +14,7 @@ deadline or pay out of order and the executor can be held *personally* liable. F
 can't afford a probate attorney do this alone, spending ~180 hours and making expensive
 mistakes nobody warned them about.
 
-Executor AI is the expert in their corner: it reconstructs the estate from its documents
+ProbatePilot is the expert in their corner: it reconstructs the estate from its documents
 and tells the executor the next action *before* it costs them. California probate only, and
 never a substitute for legal advice — for attorney-judgment questions it says so plainly.
 
