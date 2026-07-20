@@ -1,93 +1,141 @@
 # ProbatePilot
 
-> The AI that prevents executors from making expensive mistakes — by building a live
-> intelligence graph of the estate and running a true agent that alerts *before* probate
-> deadlines and liability triggers are missed.
+**An AI copilot that keeps estate executors ahead of every probate deadline.**
 
-Built for the Hackathon @ Berkeley 2026 (24-hour build).
+Built in 24 hours at UC Berkeley AI Hackathon 2026 by a 4-person team, for the
+technology-and-social-impact track.
+
+<!-- ![ProbatePilot dashboard](docs/assets/dashboard.png) -->
+<!-- See docs/assets/SCREENSHOTS-TODO.md for the shot list -->
+
+[Run it locally in 3 commands](#quick-start) — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+to put up a live version.
+
+---
 
 ## The problem
-When someone dies, the **executor** — usually a grieving family member, not a lawyer — is
-personally responsible for administering the estate: probate filings, asset inventory,
-creditor notices, debts paid in the right legal order, taxes, and distributions. Miss a
-deadline or pay out of order and the executor can be held *personally* liable. Families who
-can't afford a probate attorney do this alone, spending ~180 hours and making expensive
-mistakes nobody warned them about.
 
-ProbatePilot is the expert in their corner: it reconstructs the estate from its documents
-and tells the executor the next action *before* it costs them. California probate only, and
-never a substitute for legal advice — for attorney-judgment questions it says so plainly.
+When someone dies, the **executor** — usually a grieving family member, not a lawyer — is
+personally on the hook for administering the estate: probate filings, an asset inventory,
+creditor notices, debts paid in a specific legal order, taxes, distributions. Miss a
+deadline, or pay creditors out of order, and the executor can be held *personally* liable
+for the mistake. Most families can't afford a probate attorney for every question, so they
+do this alone — typically over 100+ hours, with no one telling them what's coming next.
+
+ProbatePilot reads the estate's documents, builds a live picture of what's known and what's
+missing, and tells the executor the next action *before* it becomes expensive. It's scoped
+to California probate law for now, and it knows what it doesn't know: for anything requiring
+legal judgment, it says so plainly instead of guessing.
 
 ## What it does
-Sign in, create an estate, and upload a will, deed, bank statement, or creditor notice.
-Claude parses each into a live estate-state graph. An estate-aware chat (text + voice)
-answers questions grounded in *your* documents. A real agent — the **DeadlineAgent** —
-proactively reasons over California probate law and tells you the next action before a
-missed deadline costs you, and a second **ResearchAgent** watches weekly for probate-law
-changes. Generated letters and emailed alert digests close the loop.
 
-## Architecture
-Polyglot, two services + shared Redis. Python is the brain, TypeScript is the experience,
-Redis is the memory.
+- **Upload a document, get a structured estate.** A will, a deed, a bank statement, a
+  creditor notice — Claude reads it and extracts the assets, debts, beneficiaries, and dates
+  into one running estate record.
+- **The DeadlineAgent watches the clock.** A deterministic California probate rule engine
+  evaluates the estate against real statutory deadlines (DE-160 inventory, the 30-day
+  creditor-notice window, debt payment order, and more); Claude then reasons over the result
+  to rank and explain it in plain language. The rules always win — Claude can rewrite the
+  copy, never the facts.
+- **Ask it anything.** An estate-aware chat (text or voice) answers questions grounded in
+  the executor's own uploaded documents, not generic advice.
+- **It writes the letters.** Creditor notices, bank notifications, beneficiary updates —
+  drafted from the estate's actual facts, ready to sign.
+- **It checks in on its own.** A weekly ResearchAgent watches for California probate-law
+  changes; an email digest keeps the executor current without opening the app.
+
+## How it works
 
 ```
-web/  (Next.js + TypeScript)  ── HTTP / SSE ──▶  agent/  (FastAPI + Python)
-  auth · dashboard · chat · voice                 auth · documents · RAG chat
-  Deepgram · Sentry                               DeadlineAgent · ResearchAgent
-                                                  letters · email · Phoenix + evals
-            └──────────────── Redis (KV state + vector search) ────────────────┘
+┌──────────────────────┐   HTTP / SSE   ┌───────────────────────────┐
+│  web/ (Next.js 14)    │───────────────▶│  agent/ (FastAPI)         │
+│  dashboard · chat     │◀───────────────│  DeadlineAgent · RAG chat │
+│  voice (Deepgram)     │                │  document intelligence   │
+│  Sentry                │                │  Phoenix tracing + evals │
+└───────────┬───────────┘                └─────────────┬─────────────┘
+            │                                            │
+            └──────────────── Redis (estate KV + vector search) ─────┘
 ```
+
+Two services, one shared store, each language doing what it's good at: Python owns Claude
+reasoning and document parsing, TypeScript owns everything the user touches. The browser
+never talks to the Python service directly — every call is proxied through Next.js, which
+forwards the session as a bearer token server-side, so there's no CORS surface to manage.
+
+**A few things worth a closer look if you're reading the code:**
+
+- **The DeadlineAgent is deterministic-first.** `evaluate_rules()` runs a pure-function rule
+  table against estate state and always produces a complete, correct alert set — with zero
+  LLM involvement. Claude then gets a bounded tool-use loop to improve the wording, but its
+  output is validated against the deterministic alerts and rejected if it drops or invents
+  one. A missing API key or a bad model response both degrade to the same rule-evaluated
+  alerts, just plainer prose. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- **The store is a real backend abstraction, not a wrapper around one database.**
+  `agent/store/` supports three interchangeable backends — in-memory (default, zero setup),
+  Upstash Redis, and Redis Cloud with Redis 8 Vector Sets for semantic search — behind one
+  API, selected by an env var.
+- **Auth is session-based with real ownership checks.** Every estate-scoped endpoint
+  requires a session and verifies the caller owns that estate, except the seeded demo
+  estate, which stays world-readable so a recruiter can click around without registering.
+- **Every Claude and OpenAI call is traced.** Phoenix spans wrap the full agent loop
+  (`estate_id`, rules checked, fallback used, tool calls); an LLM-as-judge eval
+  (`agent/evals/deadline_next_steps_quality.py`) scores the DeadlineAgent's output quality
+  on real traces.
 
 ## Stack
-- **agent/** — Python · FastAPI · Anthropic (`claude-sonnet-4-6` across parsing, the
-  agents, chat, and letters) · OpenAI embeddings · Pydantic · bcrypt auth · Resend email
-  · Phoenix tracing + LLM-as-judge evals
-- **web/** — Next.js 14 · TypeScript · Tailwind · Deepgram · Sentry · Zod
-- **shared** — Redis: KV estate state + vector search for document retrieval, behind a
-  store layer that supports Redis Cloud (cloud path in use), Upstash, or in-memory backends
 
-## Repo layout
-- [`CLAUDE.md`](CLAUDE.md) — working instructions for Claude / coding agents
-- [`project_overview.md`](project_overview.md) — full design, data shapes, flows, demo
-- [`hackathon_tracks_and_prizes.md`](hackathon_tracks_and_prizes.md) — tracks & sponsors
-- [`docs/project_structure.md`](docs/project_structure.md) — implementation folders,
-  ownership boundaries, and placeholder contracts
-- [`docs/database.md`](docs/database.md) — Redis KV/vector contract and database setup
-  checklist
-- [`docs/workstreams.md`](docs/workstreams.md) — per-member start points and stable
-  dependency boundaries
-- [`team/`](team/) — per-member role briefs (Members 1–4)
-- `agent/` — Python service · `web/` — Next.js frontend
+| | |
+|---|---|
+| **AI** | Anthropic Claude (parsing, agent reasoning, chat, letters) · OpenAI embeddings |
+| **Backend** | Python · FastAPI · Pydantic v2 · bcrypt · Resend (email) |
+| **Frontend** | Next.js 14 · TypeScript · Zod · Deepgram (voice) · Sentry |
+| **Data** | Redis (KV + Redis 8 Vector Sets), Upstash, or in-memory — pluggable |
+| **Observability** | Arize Phoenix tracing + LLM-as-judge evals |
 
-## Getting started
+## Quick start
+
+Requires [uv](https://docs.astral.sh/uv/) and Node 18.18+.
+
 ```bash
-# 1. Copy env files (won't overwrite if they already exist)
-make env
-
-# 2. Install all dependencies (uv for Python, npm for web)
-make install
-
-# 3. Start both services — agent on :8000, web on :3000
-make dev
-
-# 4. In a separate terminal: seed the demo estate
-make seed
+make env       # copy .env examples (won't overwrite existing files)
+make install   # uv sync for agent/, npm install for web/
+make dev       # agent on :8000, web on :3000
+make seed      # in a separate terminal: seed the demo estate
 ```
 
-Fill in your API keys in `agent/.env` and `web/.env.local` after running `make env`.
-Minimum to start: `ANTHROPIC_API_KEY` in `agent/.env`. The store defaults to
-`STORE_BACKEND=memory`, so Redis Cloud is optional for local dev; voice (Deepgram),
-email (Resend), and observability (Phoenix/Sentry) degrade gracefully when their keys are
-unset — voice and email return previews instead of failing.
+The only required key is `ANTHROPIC_API_KEY` in `agent/.env` — everything else (Redis,
+Deepgram, Resend, Phoenix, Sentry) is optional and degrades gracefully when unset. See
+[`agent/.env.example`](agent/.env.example) for the full list.
 
-Phoenix tracing sends Anthropic, OpenAI embedding, and custom agent spans to
-`PHOENIX_COLLECTOR_ENDPOINT` (defaults to `http://localhost:6006/v1/traces`). Set
-`PHOENIX_API_KEY` when using Phoenix Cloud; local Phoenix does not require one.
+```bash
+make test      # Python + TypeScript contract tests
+make lint      # ruff (agent/) + ESLint (web/)
+```
+
+## Deploying your own
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Render for the agent (a `render.yaml`
+blueprint is included), Vercel for the frontend, one required env var on each side.
+
+## Project structure
+
+```
+agent/     Python FastAPI service — routers, DeadlineAgent, document parsing, store
+web/       Next.js frontend — dashboard, chat, voice, letters
+docs/      Architecture, database contract, evaluation methodology, deployment
+examples/  Sample estate documents for trying the upload pipeline
+```
+
+Read [`CLAUDE.md`](CLAUDE.md) for the full architecture map, and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for data shapes, the probate rule table, and
+the demo scenario.
 
 ## Team
-| Member | Owns | Brief |
-|--------|------|-------|
-| 1 (Alex) | Document Intelligence (Python) | [member1](team/member1-document-intelligence.md) |
-| 2 | Data & Contracts (Python + TS) | [member2](team/member2-data-layer.md) |
-| 3 | DeadlineAgent + Reasoning (Python) | [member3](team/member3-deadline-agent.md) |
-| 4 | Frontend + Voice (TS) | [member4](team/member4-frontend-chat-voice.md) |
+
+Built at UC Berkeley AI Hackathon 2026 by **Alex** (document intelligence), **Davyn** (data
+layer & contracts), **Sameer** (DeadlineAgent & reasoning), and **Sherry** (frontend &
+voice).
+
+## License
+
+[MIT](LICENSE)

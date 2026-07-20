@@ -8,17 +8,22 @@ list.
 
 ## Layout
 
+- `main.py` — app factory only; every route lives in `api/routers/`
+- `api/` — FastAPI routers (one file per domain) + auth/ownership dependencies
 - `llm/` — Anthropic client (extract / stream / agent helpers) + OpenAI embeddings
-- `documents/` — router + will / bank statement / deed / creditor-notice parsers
+- `documents/` — type router, will / bank statement / deed / creditor-notice parsers,
+  and the upload → extract → merge → embed pipeline
 - `agents/` — the DeadlineAgent tool-use loop
 - `researcher/` — the weekly probate-law ResearchAgent
 - `rules/` — the California probate ruleset
 - `schemas/` — Pydantic contracts (estate, api, documents, auth)
-- `store/` — KV + vector boundary (memory / Redis Cloud / Upstash)
+- `store/` — domain layer (`redis_client.py`) + backend implementations
+  (`store/backends/`: memory / Redis Cloud / Upstash)
 - `auth/` — bcrypt password hashing + cookie sessions
 - `notify/` — Resend weekly recap / alert digest
 - `observability/` + `evals/` — Phoenix tracing and the LLM-as-judge eval
 - `seed/` — demo estate reset
+- `constants.py` — small cross-cutting constants (e.g. `DEFAULT_ESTATE_ID`)
 
 ## Local Run
 

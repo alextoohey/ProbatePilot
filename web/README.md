@@ -7,11 +7,13 @@ voice routes.
 
 ## Layout
 
-- `app/` — pages (`welcome`, dashboard, `chat`, `upload`) and route handlers
+- `app/` — `welcome` (marketing landing + auth) and `/` (the app shell — dashboard, chat,
+  upload, and letters all live as tabs inside it, not separate routes) plus route handlers
   (`api/auth/*`, `api/voice/*`, `api/agent/*`)
-- `components/` — `screens/` (AppShell, Dashboard, Chat, Letters, Upload, …), the `ds/`
-  design system, and shared widgets (AlertBanner, VoiceButton, …)
-- `lib/` — `agentClient.ts`, `deepgram.ts`, `sentry.ts`, `design/`, and Zod schemas
+- `components/screens/` — AppShell, Dashboard, Chat, Letters, Upload, AuthLanding, and the
+  modals; `components/ds/` — the design-system primitives
+- `lib/` — `agentClient.ts` (the one place that calls the agent), `deepgram.ts`,
+  `sentry.ts`, `design/`, and Zod schemas
 - `types/` — TypeScript contracts mirroring the Pydantic models
 
 ## Local Run

@@ -59,7 +59,7 @@ language for what it is best at; do not collapse everything into one stack.
   Anthropic, OpenAI embeddings, and the full agent loop; plus an LLM-as-judge eval
   (`agent/evals/deadline_next_steps_quality.py`)
 - **Dates**: `python-dateutil` / stdlib `datetime` for all deadline arithmetic
-- **Documents**: `pypdf` / `pdfplumber` for text, Claude vision for scans/images;
+- **Documents**: `pdfplumber` for text, Claude vision for scans/images and scanned PDFs;
   `pillow` + `pillow-heif` for image/HEIC handling
 
 ### `web/` — Next.js frontend (the experience)
@@ -71,11 +71,11 @@ language for what it is best at; do not collapse everything into one stack.
 
 ### Shared
 - **State + vectors**: KV holds estate state; a vector store powers RAG / agent memory
-  with 1536-dimensional `text-embedding-3-small` vectors. `agent/store/redis_client.py`
-  supports three interchangeable backends behind one API, selected by `STORE_BACKEND`:
-  `redis_cloud` (Redis Cloud KV + Redis 8 Vector Sets — the cloud path this project runs
-  on), `upstash` (Upstash Redis REST + Upstash Vector — also supported), and `memory`
-  (in-process fallback for offline dev). `make`/`.env.example` default to `memory`.
+  with 1536-dimensional `text-embedding-3-small` vectors. `agent/store/` supports three
+  interchangeable backends behind one API, selected by `STORE_BACKEND`: `redis_cloud`
+  (Redis Cloud KV + Redis 8 Vector Sets — the cloud path this project runs on), `upstash`
+  (Upstash Redis REST + Upstash Vector — also supported), and `memory` (in-process
+  fallback for offline dev). `make`/`.env.example` default to `memory`.
 
 ---
 
@@ -84,12 +84,16 @@ language for what it is best at; do not collapse everything into one stack.
 ### Python (`agent/`)
 | Purpose | Path |
 |---------|------|
-| FastAPI app entrypoint | `agent/main.py` |
+| FastAPI app factory (routers only — no route logic) | `agent/main.py` |
+| Auth + estate-ownership dependencies | `agent/api/deps.py` |
+| Route handlers, one file per domain | `agent/api/routers/` |
 | Anthropic client + helpers | `agent/llm/claude.py` |
 | OpenAI embeddings | `agent/llm/embeddings.py` |
-| Redis/Upstash client (KV + vector) | `agent/store/redis_client.py` |
+| Store domain layer (key naming, validation) | `agent/store/redis_client.py` |
+| Store backends (memory / Upstash / Redis Cloud) | `agent/store/backends/` |
 | Pydantic models | `agent/schemas/` (estate, api, documents, auth) |
 | Document parsers (will/bank/deed/creditor) | `agent/documents/` |
+| Upload → extract → merge → embed pipeline | `agent/documents/upload_pipeline.py` |
 | DeadlineAgent (tool-use loop) | `agent/agents/deadline_agent.py` |
 | ResearchAgent (weekly probate-law watch) | `agent/researcher/research_agent.py` |
 | CA probate rules | `agent/rules/california_probate.py` |
@@ -99,6 +103,7 @@ language for what it is best at; do not collapse everything into one stack.
 | Prompts | `agent/prompts/` |
 | Phoenix setup | `agent/observability/phoenix.py` |
 | Demo seed data | `agent/seed/demo_estate.py` |
+| Shared constants (e.g. `DEFAULT_ESTATE_ID`) | `agent/constants.py` |
 
 ### TypeScript (`web/`)
 | Purpose | Path |
@@ -116,10 +121,15 @@ language for what it is best at; do not collapse everything into one stack.
 ## API Surface
 
 ### Python `agent/` (FastAPI)
+Every route below except `/health`, `/seed`, and `/auth/*` requires a session and estate
+ownership (`api/deps.py::ensure_estate_access`) — the one exception is the seeded demo
+estate (`demo-milligan`), which stays world-readable so the demo works without signing up.
+
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/health` | GET | Service status + Phoenix/instrumentor readiness |
 | `/auth/register` · `/auth/login` · `/auth/logout` | POST | Account + cookie session |
+| `/auth/demo` | POST | Guest session scoped to the seeded demo estate, no registration |
 | `/auth/me` | GET | Current authenticated user |
 | `/estates` | POST | Create a real estate shell |
 | `/estate/{estate_id}` | GET | Fetch full estate state |
@@ -148,7 +158,7 @@ language for what it is best at; do not collapse everything into one stack.
 
 ## Core Data Shapes (the contract)
 These shapes are defined once as **Pydantic models** in `agent/schemas/` and mirrored as
-**TypeScript types + Zod schemas** in `web/`. Member 2 owns keeping the two in sync.
+**TypeScript types + Zod schemas** in `web/`. Keep the two in sync when either changes.
 
 ```
 EstateState (Redis KV key: estate:{id})
@@ -228,7 +238,8 @@ Full seed object: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#demo-scenario).
   Redis. Anything crossing to the browser is re-validated with Zod.
 - CA probate jurisdiction only — hardcoded for the hackathon.
 - Debt payment order: secured → unsecured → distributions. Out-of-order = executor
-  personal liability. The DeadlineAgent must flag this.
+  personal liability. `rules/california_probate.py`'s `debt-order` rule flags this the
+  moment an unsecured/priority creditor is notified before a secured one is.
 - Never give legal advice in chat. Use: *"This requires your attorney's input — it
   involves [reason]."*
 - Tone: warm and direct. Never clinical. This person is grieving.

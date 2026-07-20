@@ -17,10 +17,11 @@ selected by `STORE_BACKEND`:
 - `STORE_BACKEND=upstash` — Upstash Redis REST for KV plus Upstash Vector for RAG chunks.
   Also supported.
 
-## Ownership
-
-Member 2 owns this contract and the Redis implementation. Other members should import the
-helpers from `agent/store/redis_client.py` instead of creating Redis clients directly.
+Internally, `redis_client.py` is a thin domain layer (key naming, JSON encode/decode,
+Pydantic validation) over `agent/store/backends/` — a `KVStore` implementation per backend
+plus a separate vector-search implementation per backend, since Upstash's REST index and
+Redis 8's `VADD`/`VSIM` commands don't share a common shape. Nothing outside `store/` should
+import from `store/backends/` directly.
 
 ## Keys
 
