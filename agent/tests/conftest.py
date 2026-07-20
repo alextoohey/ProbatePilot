@@ -26,7 +26,17 @@ def memory_store(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("PHOENIX_COLLECTOR_ENDPOINT", raising=False)
 
+    from observability import phoenix
     from store import redis_client
+
+    # Tests that call a real, unmocked route (TestClient) would otherwise hit
+    # observability.phoenix.span()'s lazy init_tracing() and attempt a live
+    # connection to a Phoenix collector. Treat tracing as already initialized
+    # (and disabled) by default; tests that exercise init_tracing() itself
+    # override these with their own monkeypatch.setattr calls.
+    monkeypatch.setattr(phoenix, "_INITIALIZED", True)
+    monkeypatch.setattr(phoenix, "_TRACING_ENABLED", False)
+    monkeypatch.setattr(phoenix, "_TRACER", None)
 
     redis_client.reset_state()
     yield

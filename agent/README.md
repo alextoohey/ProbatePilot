@@ -52,8 +52,13 @@ and moves on; nothing in the app depends on Phoenix being up.
 To actually see traces, run a local Phoenix server with Docker:
 
 ```bash
-docker run -p 6006:6006 -p 4317:4317 -i -t arizephoenix/phoenix:latest
+docker run -p 6006:6006 -p 4317:4317 -i -t -v phoenix-data:/mnt/data arizephoenix/phoenix:latest
 ```
+
+The `-v phoenix-data:/mnt/data` mounts a named volume for Phoenix's SQLite store, so traces
+survive both a `docker stop`/`docker start` cycle and re-running this same command later —
+without it, traces only survive as long as that one container exists, and are gone for good
+the moment you `docker rm` it or run a fresh `docker run`.
 
 Then open `http://localhost:6006` — traces from the agent show up there automatically,
 since `agent/.env.example` already points `PHOENIX_COLLECTOR_ENDPOINT` at that address.
