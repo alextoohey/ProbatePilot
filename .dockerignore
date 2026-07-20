@@ -1,0 +1,14 @@
+# Applies to the build context (repo root) for `docker build -f agent/Dockerfile .`
+web/node_modules/
+web/.next/
+agent/.venv/
+agent/__pycache__/
+agent/**/__pycache__/
+agent/.pytest_cache/
+agent/.env
+agent/tests/
+tests/
+examples/
+demo-docs/
+.git/
+

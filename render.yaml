@@ -1,0 +1,26 @@
+# Render Blueprint for the agent/ service. Deploy with "New +" -> "Blueprint"
+# in the Render dashboard, pointing at this repo. See docs/DEPLOYMENT.md for
+# the full walkthrough (including the Vercel side, which Render doesn't host).
+#
+# Only ANTHROPIC_API_KEY is required to boot — everything else degrades
+# gracefully (see the agent README). Render prompts for any env var marked
+# sync: false at first deploy.
+services:
+  - type: web
+    name: probatepilot-agent
+    runtime: docker
+    dockerfilePath: ./agent/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: STORE_BACKEND
+        value: memory
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: onboarding@resend.dev
