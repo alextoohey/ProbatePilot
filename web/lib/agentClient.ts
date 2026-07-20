@@ -81,6 +81,16 @@ export async function login(request: LoginRequest): Promise<{ user: PublicUser }
   return z.object({ user: publicUserSchema }).parse(await response.json());
 }
 
+/** Signs into the shared demo account (seeded Robert Milligan estate), no
+ * registration required — powers the "Try the demo" entry point. */
+export async function demoLogin(): Promise<{ user: PublicUser }> {
+  const response = await fetch("/api/auth/demo", { method: "POST" });
+  if (!response.ok) {
+    throw new AuthError(await readError(response, "Could not start the demo. Please try again."), response.status);
+  }
+  return z.object({ user: publicUserSchema }).parse(await response.json());
+}
+
 export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST" });
 }

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button, Input, Select } from "@/components/ds";
-import { AuthError, login as apiLogin, register as apiRegister } from "@/lib/agentClient";
+import { AuthError, demoLogin as apiDemoLogin, login as apiLogin, register as apiRegister } from "@/lib/agentClient";
 
 // Marketing landing + log in + a 3-step sign-up wizard (executor account, the
 // deceased's details, the estate). Ported from the design system's
@@ -67,6 +67,9 @@ export function AuthLanding({
   const [loginEmail, setLoginEmail] = React.useState("");
   const [loginPassword, setLoginPassword] = React.useState("");
   const [loginError, setLoginError] = React.useState("");
+
+  const [demoBusy, setDemoBusy] = React.useState(false);
+  const [demoError, setDemoError] = React.useState("");
 
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -154,6 +157,19 @@ export function AuthLanding({
     }
   }
 
+  async function tryDemo() {
+    setDemoError("");
+    setDemoBusy(true);
+    try {
+      await apiDemoLogin();
+      onEnterApp?.();
+    } catch (err) {
+      setDemoError(err instanceof AuthError ? err.message : "Could not start the demo. Please try again.");
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
   const decFirst = firstName(decName);
   const successHeadline = decFirst ? `${decFirst}'s estate is ready` : "Your estate workspace is ready";
 
@@ -165,6 +181,7 @@ export function AuthLanding({
             <div style={{ maxWidth: "var(--container-lg)", margin: "0 auto", padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
               <LogoButton onClick={() => go("landing")} />
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Button variant="ghost" onClick={tryDemo} disabled={demoBusy}>{demoBusy ? "Loading demo…" : "Try the demo"}</Button>
                 <Button variant="ghost" onClick={() => go("login")}>Log in</Button>
                 <Button variant="primary" onClick={() => go("signup")}>Get started</Button>
               </div>
@@ -189,9 +206,11 @@ export function AuthLanding({
                 <h1 style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: "var(--text-5xl)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", lineHeight: "var(--leading-tight)", color: "var(--paper-50)", textWrap: "balance", textShadow: "0 2px 24px rgba(0,0,0,0.28)" }}>You shouldn&apos;t have to learn probate law while you&apos;re grieving.</h1>
                 <p style={{ margin: "0 0 32px", fontSize: "var(--text-md)", lineHeight: "var(--leading-relaxed)", color: "rgba(241,247,243,0.88)", maxWidth: 610, textShadow: "0 1px 18px rgba(0,0,0,0.22)" }}>ProbatePilot reads your documents, tracks every deadline, and tells you the one thing to do next, before a missed date can cost you. Plain English, always.</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-                <Button variant="primary" size="lg" onClick={() => go("signup")}>Create your account</Button>
+                <Button variant="primary" size="lg" onClick={tryDemo} disabled={demoBusy}>{demoBusy ? "Loading demo…" : "Try the live demo"}</Button>
+                <Button variant="secondary" size="lg" onClick={() => go("signup")} style={{ background: "rgba(255,255,255,0.9)", borderColor: "rgba(255,255,255,0.74)" }}>Create your account</Button>
                 <Button variant="secondary" size="lg" onClick={() => go("login")} style={{ background: "rgba(255,255,255,0.9)", borderColor: "rgba(255,255,255,0.74)" }}>I already have an account</Button>
                 </div>
+                {demoError && <p style={{ ...errorBox, marginTop: 16, maxWidth: 460 }}>{demoError}</p>}
               </div>
             </div>
           </section>

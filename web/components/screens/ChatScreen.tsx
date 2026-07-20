@@ -288,7 +288,7 @@ export function ChatScreen({ estate }: Props) {
     } catch {
       setMsgs((m) => {
         const copy = [...m];
-        copy[copy.length - 1] = { from: "ai", text: "I couldn't reach the estate service. Make sure the agent is running on :8000, then try again." };
+        copy[copy.length - 1] = { from: "ai", text: "I couldn't reach the estate service. Please try again in a moment." };
         return copy;
       });
       return "";
