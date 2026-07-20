@@ -81,12 +81,13 @@ def test_embeddings_are_1536_dimensional_deterministic_and_bounded() -> None:
 
 def test_parse_document_endpoint_embeds_adds_document_and_returns_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
     import main
+    from api.routers import documents
 
     async def fake_deadline_agent(estate_id: str):
         assert estate_id == "demo-milligan"
         return []
 
-    monkeypatch.setattr(main, "run_deadline_agent", fake_deadline_agent)
+    monkeypatch.setattr(documents, "run_deadline_agent", fake_deadline_agent)
     client = TestClient(main.app)
 
     response = client.post(

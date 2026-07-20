@@ -111,9 +111,18 @@ def test_authenticated_user_can_create_and_reload_an_additional_estate() -> None
     assert estate["id"] in me.json()["user"]["estateIds"]
     assert estate["id"] in {item["id"] for item in me.json()["estates"]}
 
-    loaded = client.get(f"/estate/{estate['id']}")
+    loaded = client.get(f"/estate/{estate['id']}", headers=headers)
     assert loaded.status_code == 200
     assert loaded.json()["estate"]["deceasedName"] == "Gloria Reyes"
+
+    # Non-owners (including anonymous callers) can't read someone else's estate.
+    assert client.get(f"/estate/{estate['id']}").status_code == 401
+    other = client.post("/auth/register", json=_registration_payload("someone-else@example.com"))
+    other_headers = {"authorization": f"Bearer {other.json()['token']}"}
+    assert client.get(f"/estate/{estate['id']}", headers=other_headers).status_code == 404
+
+    # The seeded demo estate stays readable without a session (guest/demo mode).
+    assert client.get("/estate/demo-milligan").status_code == 200
 
 
 def test_create_estate_requires_authentication_and_missing_estates_return_404() -> None:
@@ -121,4 +130,8 @@ def test_create_estate_requires_authentication_and_missing_estates_return_404() 
 
     unauthorized = client.post("/estates", json={"deceasedName": "Gloria Reyes"})
     assert unauthorized.status_code == 401
-    assert client.get("/estate/est-does-not-exist").status_code == 404
+    assert client.get("/estate/est-does-not-exist").status_code == 401
+
+    registration = client.post("/auth/register", json=_registration_payload("missing-estate@example.com"))
+    headers = {"authorization": f"Bearer {registration.json()['token']}"}
+    assert client.get("/estate/est-does-not-exist", headers=headers).status_code == 404
