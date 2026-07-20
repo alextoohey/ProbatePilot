@@ -84,7 +84,9 @@ forwards the session as a bearer token server-side, so there's no CORS surface t
 - **Every Claude and OpenAI call is traced.** Phoenix spans wrap the full agent loop
   (`estate_id`, rules checked, fallback used, tool calls); an LLM-as-judge eval
   (`agent/evals/deadline_next_steps_quality.py`) scores the DeadlineAgent's output quality
-  on real traces.
+  on real traces. Tracing is optional and degrades to a harmless connection warning with
+  no collector running — see [`agent/README.md`](agent/README.md#phoenix-tracing) to spin
+  one up locally and actually watch the traces.
 
 ## Stack
 

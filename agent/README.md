@@ -45,8 +45,20 @@ deterministic fallbacks still serve the demo.
 
 ## Phoenix tracing
 
-The service sends Anthropic, OpenAI embedding, and custom workflow spans to Phoenix.
-Start a Phoenix server on `http://localhost:6006`, or configure Phoenix Cloud in `.env`:
+The service sends Anthropic, OpenAI embedding, and custom workflow spans to Phoenix. This
+is entirely optional — without a collector running, the SDK just logs a connection warning
+and moves on; nothing in the app depends on Phoenix being up.
+
+To actually see traces, run a local Phoenix server with Docker:
+
+```bash
+docker run -p 6006:6006 -p 4317:4317 -i -t arizephoenix/phoenix:latest
+```
+
+Then open `http://localhost:6006` — traces from the agent show up there automatically,
+since `agent/.env.example` already points `PHOENIX_COLLECTOR_ENDPOINT` at that address.
+No Phoenix account or API key needed for local use. To use Phoenix Cloud instead, set these
+in `.env`:
 
 ```bash
 PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
