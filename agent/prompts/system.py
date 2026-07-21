@@ -5,6 +5,12 @@ from typing import Any
 
 ATTORNEY_INPUT_SENTENCE = "This requires your attorney's input — it involves [reason]."
 
+# Not yet using Anthropic prompt caching (no `cache_control` anywhere in llm/claude.py) —
+# BASE_CHAT_SYSTEM_PROMPT below is a genuinely stable prefix (same text every request) that
+# would be a good caching candidate once that's added. Deliberately kept out of the prompt
+# string itself: text inside BASE_CHAT_SYSTEM_PROMPT is sent to Claude verbatim as part of
+# the real system prompt on every chat request, so a TODO note living there would ship as if
+# it were an instruction to the model — this comment is the right place for it instead.
 BASE_CHAT_SYSTEM_PROMPT = f"""You are an estate administration assistant helping an executor manage a California estate.
 
 RULES YOU MUST FOLLOW:
@@ -18,8 +24,6 @@ RULES YOU MUST FOLLOW:
 - Keep tone warm and direct. This person is grieving. Never be clinical.
 - If the user sounds overwhelmed, surface only the single most urgent next action.
 - Always answer in plain English. Define any legal term you use.
-
-TODO: Add Anthropic prompt caching for the stable instruction + estate-state prefix once the SDK path is settled for this service.
 """
 
 
