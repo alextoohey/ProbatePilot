@@ -9,8 +9,12 @@ technology-and-social-impact track.
 
 ### [**Try it live → probatepilot.vercel.app**](https://probatepilot.vercel.app)
 
-[Run it locally in 3 commands](#quick-start) instead — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
-to put up your own version.
+Running on real, separately-provisioned infrastructure — Google Cloud Run (agent) and
+Vercel (frontend), both auto-deploying on push. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#production-deployment) for the system design,
+or [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the exact setup end to end.
+
+[Run it locally in 3 commands](#quick-start) instead.
 
 ---
 
@@ -127,6 +131,18 @@ dev; it's not what's actually running behind the live deploy.
   (poll the actual CA statute/form pages this app's own rules cite, diff their amendment
   dates) is fully scoped in [`docs/RESEARCH_AGENT_REDESIGN.md`](docs/RESEARCH_AGENT_REDESIGN.md),
   not yet built.
+- **The live deploy runs on real, separately-provisioned cloud infrastructure, not a
+  one-click tutorial default.** Google Cloud Run (agent, as the same `agent/Dockerfile`
+  used locally — no separate "prod" build) and Vercel (frontend) both auto-deploy on push
+  to `main`, each scoped independently by path (`agent/**` for Cloud Run, `web/` for
+  Vercel) so an unrelated change doesn't trigger a pointless rebuild — verified by pushing
+  a docs-only commit and confirming neither pipeline fired. The Cloud Run deploy runs under
+  a dedicated, least-privilege IAM service account rather than the default Cloud Build
+  service account's much broader access. Measured, not assumed: a 13.99s cold start on the
+  real deployed service after 12 minutes idle. See
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#production-deployment) for the design,
+  [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the exact setup — including every real
+  gotcha hit doing it, not an idealized version.
 
 ## Stack
 
@@ -136,6 +152,7 @@ dev; it's not what's actually running behind the live deploy.
 | **Backend** | Python · FastAPI · Pydantic v2 · bcrypt · Resend (email) |
 | **Frontend** | Next.js 14 · TypeScript · Zod · Deepgram (voice) · Sentry |
 | **Data** | Redis Cloud (KV + Redis 8 Vector Sets) in production — pluggable to Upstash or an in-memory store for local dev |
+| **Deployment** | Google Cloud Run (agent, Docker + Artifact Registry) · Vercel (frontend) · both auto-deploy on push via path-scoped Cloud Build / Vercel Git triggers |
 | **Observability** | Arize Phoenix tracing + LLM-as-judge evals |
 
 ## Quick start
