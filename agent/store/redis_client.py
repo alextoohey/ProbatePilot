@@ -20,7 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from constants import DEFAULT_ESTATE_ID
+from constants import DEFAULT_ESTATE_ID, DEMO_VISITOR_TTL_SECONDS
 from schemas.api import SearchResult
 from schemas.auth import User
 from schemas.estate import Alert, EstateState, Executor, SavedLetter, UploadedDocument, utc_now_iso
@@ -328,12 +328,13 @@ def append_chat_session_messages(estate_id: str, session_id: str | None, message
 # --------------------------------------------------------------------------- #
 
 
-def create_user(user: User) -> User:
+def create_user(user: User, ttl_seconds: int | None = None) -> User:
     """Persist a new user and its email -> id index. Caller must ensure the
-    email is not already taken (use ``get_user_by_email`` first)."""
+    email is not already taken (use ``get_user_by_email`` first). ``ttl_seconds``
+    lets ephemeral records (e.g. per-visitor demo users) self-expire."""
     user = User.model_validate(_plain(user))
-    _kv().set(user_key(user.id), user.model_dump_json())
-    _kv().set(user_email_key(user.email), user.id)
+    _kv().set(user_key(user.id), user.model_dump_json(), ex=ttl_seconds)
+    _kv().set(user_email_key(user.email), user.id, ex=ttl_seconds)
     return user
 
 
@@ -386,11 +387,17 @@ def list_estate_ids() -> list[str]:
     return sorted(_estate_id_from_key(key) for key in keys if _is_estate_state_key(str(key)))
 
 
-def set_estate_state(estate: EstateState | dict[str, Any]) -> EstateState:
+def set_estate_state(estate: EstateState | dict[str, Any], ttl_seconds: int | None = None) -> EstateState:
     estate = EstateState.model_validate(_plain(estate))
     estate.updatedAt = utc_now_iso()
     estate = EstateState.model_validate(estate.model_dump())
-    _kv().set(estate_key(estate.id), estate.model_dump_json())
+    # A plain SET clears any existing TTL, so every write to a per-visitor demo
+    # estate must reapply one or it becomes permanent after its first edit.
+    # Renewing it here (rather than requiring every caller to pass ttl_seconds)
+    # also gives active demo sessions a sliding expiry instead of a hard cutoff.
+    if ttl_seconds is None and estate.isDemo:
+        ttl_seconds = DEMO_VISITOR_TTL_SECONDS
+    _kv().set(estate_key(estate.id), estate.model_dump_json(), ex=ttl_seconds)
     return estate
 
 

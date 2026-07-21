@@ -99,6 +99,7 @@ export const estateStateSchema = z.object({
   alerts: z.array(alertSchema),
   letters: z.array(savedLetterSchema),
   phase: estatePhaseSchema,
+  isDemo: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 }).strict();

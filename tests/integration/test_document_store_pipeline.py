@@ -20,10 +20,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     import main
     from api.routers import documents
 
-    async def fake_deadline_agent(_estate_id: str):
+    def fake_deadline_agent(_estate_id: str):
         return []
 
-    monkeypatch.setattr(documents, "run_deadline_agent", fake_deadline_agent)
+    monkeypatch.setattr(documents, "refresh_deadline_state", fake_deadline_agent)
     return TestClient(main.app)
 
 

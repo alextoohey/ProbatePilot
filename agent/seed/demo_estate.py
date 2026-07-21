@@ -65,8 +65,18 @@ DEMO_ESTATE = EstateState(
         Task(id="task-inventory-appraisal", title="Prepare DE-160 Inventory and Appraisal", phase=2),
     ],
     phase=2,
+    isDemo=True,
 )
 
 
 def build_demo_estate() -> EstateState:
     return deepcopy(DEMO_ESTATE)
+
+
+def build_demo_estate_for_visitor(estate_id: str) -> EstateState:
+    """A fresh, independent copy of the seed content under a new id, so each
+    "Try the demo" visitor gets their own estate instead of sharing the one
+    canonical `demo-milligan` record (and each other's edits)."""
+    estate = deepcopy(DEMO_ESTATE)
+    estate.id = estate_id
+    return estate

@@ -5,10 +5,13 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from api.deps import DEMO_ESTATE_ID, require_user
+from agents.deadline_agent import refresh_deadline_state
+from api.deps import require_user
 from auth.security import hash_password, new_session_token, verify_password
+from constants import DEMO_VISITOR_TTL_SECONDS
 from schemas.auth import AuthResponse, LoginRequest, MeResponse, PublicUser, RegisterRequest, User
 from schemas.estate import EstateState, Executor
+from seed.demo_estate import build_demo_estate_for_visitor
 from store.redis_client import (
     create_session,
     create_user,
@@ -20,8 +23,6 @@ from store.redis_client import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-DEMO_USER_EMAIL = "demo@probatepilot.app"
 
 
 def _bearer_token(authorization: str | None) -> str | None:
@@ -85,29 +86,33 @@ async def login(request: LoginRequest) -> AuthResponse:
 
 @router.post("/demo", response_model=AuthResponse)
 async def demo_login() -> AuthResponse:
-    """Guest entry point for portfolio visitors: signs into a shared demo
-    account scoped to the seeded Robert Milligan estate, with no
-    registration step. The demo estate is world-readable regardless (see
-    `api.deps.ensure_estate_access`); this endpoint exists so the frontend
-    can put the visitor through the exact same authenticated flow as a real
-    user instead of special-casing "no session" in every screen."""
-    estate = get_estate_state(DEMO_ESTATE_ID)  # auto-seeds on first call
+    """Guest entry point for portfolio visitors: every call mints its own
+    independent copy of the seeded Robert Milligan estate plus its own
+    throwaway user, so one visitor's edits (completed tasks, uploads) never
+    show up for another. No registration step. Both records are ephemeral —
+    they self-expire in the store after `DEMO_VISITOR_TTL_SECONDS` rather
+    than needing a cleanup job."""
+    visitor_id = uuid.uuid4().hex[:10]
+    estate = build_demo_estate_for_visitor(f"demo-{visitor_id}")
+    estate = set_estate_state(estate)  # isDemo=True gives it a self-renewing TTL automatically
 
-    user = get_user_by_email(DEMO_USER_EMAIL)
-    if user is None:
-        user = User(
-            id=f"user-demo-{uuid.uuid4().hex[:8]}",
-            name=estate.executor.name,
-            email=DEMO_USER_EMAIL,
-            passwordHash=hash_password(uuid.uuid4().hex),
-            estateIds=[DEMO_ESTATE_ID],
-        )
-        create_user(user)
-    elif DEMO_ESTATE_ID not in user.estateIds:
-        user.estateIds.append(DEMO_ESTATE_ID)
-        update_user(user)
+    # Evaluate deadlines up front so the visitor lands on a populated dashboard
+    # instead of an empty one. The deterministic rule engine only (no Claude
+    # tool-use loop) keeps this instant — full run_deadline_agent() takes
+    # 30-45s end to end, which is not acceptable to block a login on.
+    refresh_deadline_state(estate.id)
+    estate = get_estate_state(estate.id)
 
-    token = create_session(user.id, new_session_token())
+    user = User(
+        id=f"user-demo-{visitor_id}",
+        name=estate.executor.name,
+        email=f"demo+{visitor_id}@probatepilot.app",
+        passwordHash=hash_password(uuid.uuid4().hex),
+        estateIds=[estate.id],
+    )
+    create_user(user, ttl_seconds=DEMO_VISITOR_TTL_SECONDS)
+
+    token = create_session(user.id, new_session_token(), ttl_seconds=DEMO_VISITOR_TTL_SECONDS)
     return AuthResponse(token=token, user=PublicUser.from_user(user), estate=estate)
 
 

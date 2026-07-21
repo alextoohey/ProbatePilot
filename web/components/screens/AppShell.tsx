@@ -92,10 +92,10 @@ function toEstateProfile(estate: EstateState, user: PublicUser): EstateProfile {
     phase: estate.phase,
     // The seeded demo estate drives the rich cosmetic screens; real estates
     // start empty until documents are parsed.
-    seeded: estate.id === "demo-milligan",
+    seeded: estate.isDemo,
     // Chat and letters unlock once the estate actually has a document on file
     // (the demo always does).
-    hasDocuments: estate.id === "demo-milligan" || estate.documents.length > 0,
+    hasDocuments: estate.isDemo || estate.documents.length > 0,
   };
 }
 
@@ -148,11 +148,16 @@ export function AppShell() {
         setEstates((cur) =>
           cur.map((item) =>
             item.id === activeEstateId
-              ? { ...item, phase: estate.phase, hasDocuments: item.id === "demo-milligan" || estate.documents.length > 0 }
+              ? { ...item, phase: estate.phase, hasDocuments: estate.isDemo || estate.documents.length > 0 }
               : item,
           ),
         );
 
+        // Demo login only runs the fast, deterministic rule check (so login
+        // itself is instant) — kick off the real Claude-enhanced pass in the
+        // background so visitors see the actual reasoned copy without having
+        // to complete a task first to trigger it.
+        if (estate.isDemo) void refreshDeadlineAgentInBackground(estate.id);
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -232,7 +237,7 @@ export function AppShell() {
         setEstates((cur) =>
           cur.map((item) =>
             item.id === id
-              ? { ...item, phase: estate.phase, hasDocuments: item.id === "demo-milligan" || estate.documents.length > 0 }
+              ? { ...item, phase: estate.phase, hasDocuments: estate.isDemo || estate.documents.length > 0 }
               : item,
           ),
         );
@@ -260,7 +265,7 @@ export function AppShell() {
       setEstates((cur) =>
         cur.map((item) =>
           item.id === estateId
-            ? { ...item, phase: estate.phase, hasDocuments: item.id === "demo-milligan" || estate.documents.length > 0 }
+            ? { ...item, phase: estate.phase, hasDocuments: estate.isDemo || estate.documents.length > 0 }
             : item,
         ),
       );
@@ -290,12 +295,16 @@ export function AppShell() {
       setEstates((cur) =>
         cur.map((e) =>
           e.id === id
-            ? { ...e, phase: estate.phase, hasDocuments: e.id === "demo-milligan" || estate.documents.length > 0 }
+            ? { ...e, phase: estate.phase, hasDocuments: estate.isDemo || estate.documents.length > 0 }
           : e,
         ),
       );
 
       setLiveAlertsFailed(false);
+      // parse-document/parse-documents/delete only run the fast deterministic
+      // rule check now, so the estate here has correct-but-plainer alerts.
+      // Upgrade to the Claude-enhanced wording in the background.
+      void refreshDeadlineAgentInBackground(id);
     } catch {
       setLiveAlertsFailed(true);
     }

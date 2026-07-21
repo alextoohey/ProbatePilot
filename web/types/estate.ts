@@ -102,6 +102,7 @@ export interface EstateState {
   alerts: Alert[];
   letters: SavedLetter[];
   phase: EstatePhase;
+  isDemo: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -120,5 +120,6 @@ class EstateState(ContractModel):
     alerts: list[Alert] = Field(default_factory=list)
     letters: list[SavedLetter] = Field(default_factory=list)
     phase: EstatePhase = 1
+    isDemo: bool = False
     createdAt: str = Field(default_factory=utc_now_iso)
     updatedAt: str = Field(default_factory=utc_now_iso)

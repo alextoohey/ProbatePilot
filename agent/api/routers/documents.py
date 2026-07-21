@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from agents.deadline_agent import run_deadline_agent
+from agents.deadline_agent import refresh_deadline_state
 from api.deps import ensure_estate_access, optional_user, require_estate_access
 from documents.upload_pipeline import (
     ParsedUpload,
@@ -42,7 +42,9 @@ async def delete_document_route(estate_id: str, doc_id: str) -> dict[str, object
     removed = delete_document(estate_id, doc_id)
     if removed is None:
         raise HTTPException(status_code=404, detail="Document not found.")
-    alerts = await run_deadline_agent(estate_id)
+    # Deterministic-only so the response doesn't stack a second Claude call on
+    # top of the delete itself; the frontend triggers the full pass afterward.
+    alerts = refresh_deadline_state(estate_id)
     return {"estateId": estate_id, "deletedDocumentId": doc_id, "alerts": alerts}
 
 
@@ -59,7 +61,11 @@ async def parse_document(
         return parse_response_from_upload(estateId, parsed)
 
     store_parsed_upload(estateId, parsed)
-    alerts = await run_deadline_agent(estateId)
+    # Deterministic-only here: parsing the document is already one real Claude
+    # call, and stacking the full DeadlineAgent tool-use loop on top pushed
+    # single-document uploads past 60s. The frontend triggers the full,
+    # Claude-enhanced pass in the background right after this returns.
+    alerts = refresh_deadline_state(estateId)
     return parse_response_from_upload(estateId, parsed, alerts=alerts)
 
 
@@ -99,7 +105,7 @@ async def parse_documents(
 
     embed_stored_uploads(estateId, stored_uploads)
 
-    alerts = await run_deadline_agent(estateId) if stored_uploads else []
+    alerts = refresh_deadline_state(estateId) if stored_uploads else []
     for response in responses:
         if not response.needsTypeSelection:
             response.alerts = alerts

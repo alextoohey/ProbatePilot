@@ -6,3 +6,9 @@ import DEFAULT_ESTATE_ID back from the store)."""
 from __future__ import annotations
 
 DEFAULT_ESTATE_ID = "demo-milligan"
+
+# Each "Try the demo" click gets its own isolated copy of the seed estate, so
+# one visitor's edits (completed tasks, uploads) never leak into another's.
+# Ephemeral by design — self-expires in the store rather than needing a
+# cleanup job.
+DEMO_VISITOR_TTL_SECONDS = 60 * 60 * 24  # 24 hours
