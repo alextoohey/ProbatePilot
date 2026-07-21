@@ -4,6 +4,12 @@ import { SESSION_COOKIE } from "@/lib/authCookie";
 
 const AGENT_API_URL = process.env.AGENT_API_URL ?? "http://localhost:8000";
 
+// The DeadlineAgent's Claude-enhanced pass (POST /deadline-agent, proxied through here)
+// takes ~30-45s. Vercel's serverless function default (10s on Hobby) would kill it
+// mid-flight; this raises the ceiling to the platform's Hobby-plan max. Ignored by
+// Render/local, where there's no such limit.
+export const maxDuration = 60;
+
 async function proxy(request: NextRequest, { params }: { params: { path: string[] } }) {
   return withSentrySpan("agent.proxy", async () => {
     const url = `${AGENT_API_URL}/${params.path.join("/")}${request.nextUrl.search}`;
