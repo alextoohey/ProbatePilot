@@ -15,6 +15,50 @@ function formatLongDate(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
+type TaskRowTask = { id: string; title: string; status: string; relatedAlertId?: string | null };
+
+function TaskRow({
+  task,
+  clickable,
+  onOpenStep,
+  taskTone,
+  taskLabel,
+}: {
+  task: TaskRowTask;
+  clickable: boolean;
+  onOpenStep?: (id: string) => void;
+  taskTone: Record<string, "success" | "neutral" | "brand" | "warning">;
+  taskLabel: Record<string, string>;
+}) {
+  const textStyle: React.CSSProperties = {
+    fontSize: "var(--text-sm)",
+    color: task.status === "done" ? "var(--text-muted)" : "var(--text-body)",
+    textDecoration: task.status === "done" ? "line-through" : "none",
+  };
+  const badge = <Badge tone={taskTone[task.status] ?? "neutral"}>{taskLabel[task.status] ?? task.status}</Badge>;
+
+  if (!clickable) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px" }}>
+        <span style={textStyle}>{cleanDashboardText(task.title)}</span>
+        {badge}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => onOpenStep && task.relatedAlertId && onOpenStep(task.relatedAlertId)}
+      style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", background: "transparent", border: "none", cursor: "pointer", transition: "background var(--transition-fast)" }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+    >
+      <span style={textStyle}>{cleanDashboardText(task.title)}</span>
+      {badge}
+    </button>
+  );
+}
+
 type Props = {
   estate?: EstateProfile;
   completedIds?: string[];
@@ -204,12 +248,14 @@ export function DashboardScreen({ estate, completedIds = [], onOpenStep, onGoDoc
       <section style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "var(--space-6)", alignItems: "start" }}>
         <Card title="Tasks" subtitle="Ordered by what unblocks the estate" padded={false}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {displayTasks.map((t, i) => (
-              <li key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
-                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{cleanDashboardText(t.title)}</span>
-                <Badge tone={taskTone[t.status]}>{taskLabel[t.status]}</Badge>
-              </li>
-            ))}
+            {displayTasks.map((t, i) => {
+              const clickable = Boolean(t.relatedAlertId && onOpenStep);
+              return (
+                <li key={t.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
+                  <TaskRow task={t} clickable={clickable} onOpenStep={onOpenStep} taskTone={taskTone} taskLabel={taskLabel} />
+                </li>
+              );
+            })}
           </ul>
         </Card>
 
@@ -331,12 +377,14 @@ function RealDashboard({ real, alerts, onOpenStep, deadlineRefreshing = false }:
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {real.tasks.length === 0 ? (
               <li style={{ padding: "18px 20px", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>No tasks yet. They appear as documents are parsed.</li>
-            ) : real.tasks.map((t, i) => (
-              <li key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
-                <span style={{ fontSize: "var(--text-sm)", color: t.status === "done" ? "var(--text-muted)" : "var(--text-body)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{cleanDashboardText(t.title)}</span>
-                <Badge tone={taskTone[t.status]}>{taskLabel[t.status]}</Badge>
-              </li>
-            ))}
+            ) : real.tasks.map((t, i) => {
+              const clickable = Boolean(t.relatedAlertId && onOpenStep);
+              return (
+                <li key={t.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
+                  <TaskRow task={t} clickable={clickable} onOpenStep={onOpenStep} taskTone={taskTone} taskLabel={taskLabel} />
+                </li>
+              );
+            })}
           </ul>
         </Card>
 

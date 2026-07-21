@@ -9,7 +9,13 @@ const TIMING_LABELS: Record<Exclude<AlertTimingStatus, "dated">, string> = {
 
 export function formatAlertTimingLabel(alert: Pick<Alert, "daysRemaining" | "timingStatus">): string {
   if (typeof alert.daysRemaining === "number") {
-    return `${alert.daysRemaining} days`;
+    const days = alert.daysRemaining;
+    if (days < 0) {
+      const overdue = Math.abs(days);
+      return `Overdue by ${overdue} day${overdue === 1 ? "" : "s"}`;
+    }
+    if (days === 0) return "Due today";
+    return `Due in ${days} day${days === 1 ? "" : "s"}`;
   }
 
   const status = alert.timingStatus ?? "no_deadline";

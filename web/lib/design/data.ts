@@ -52,6 +52,7 @@ export type Task = {
   id: string;
   title: string;
   status: "done" | "todo" | "blocked";
+  relatedAlertId?: string | null;
 };
 
 export type DemoEstate = {

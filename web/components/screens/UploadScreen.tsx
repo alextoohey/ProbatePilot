@@ -781,7 +781,7 @@ export function UploadScreen({ estate, onDocumentsChanged }: Props) {
                 )
               ) : (
                 <div style={{ background: "var(--paper-0)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-sm)", padding: "32px 28px", minHeight: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--text-muted)", textAlign: "center" }}>Preview only available for documents uploaded in this session.</p>
+                  <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--text-muted)", textAlign: "center" }}>This is a sample document included with the demo estate — no actual file is attached to preview. Upload your own documents in a real account to see this working end-to-end.</p>
                 </div>
               )}
               <p style={{ margin: "14px 2px 0", fontSize: "var(--text-xs)", color: "var(--text-muted)", textAlign: "center" }}>Preview of the original document. Download to view the full file.</p>
