@@ -40,11 +40,6 @@ legal judgment, it says so plainly instead of guessing.
   the executor's own uploaded documents, not generic advice.
 - **It writes the letters.** Creditor notices, bank notifications, beneficiary updates —
   drafted from the estate's actual facts, ready to sign.
-- **It checks in on its own.** A weekly ResearchAgent watches for California probate-law
-  changes and surfaces what's relevant right in the dashboard. An email digest pipeline
-  (Resend, human-toned templates, on-demand send) is fully built — it's just gated behind
-  a verified sending domain for now, so it's not exposed in the UI yet. See
-  [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#known-follow-up-email-delivery).
 
 <p float="left">
   <img src="docs/assets/documents.png" width="49%" alt="Document upload with the parsing checklist" />
@@ -90,6 +85,14 @@ forwards the session as a bearer token server-side, so there's no CORS surface t
   on real traces. Tracing is optional and degrades to a harmless connection warning with
   no collector running — see [`agent/README.md`](agent/README.md#phoenix-tracing) to spin
   one up locally and actually watch the traces.
+- **Two features are built but intentionally not exposed yet.** An email digest pipeline
+  (Resend, human-toned templates, on-demand send) is fully working but gated behind a
+  verified sending domain — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#known-follow-up-email-delivery).
+  A `ResearchAgent` prototype exists but currently relies on unofficial news search with no
+  real relevance judgment and isn't wired to any trigger — a source-verified redesign
+  (poll the actual CA statute/form pages this app's own rules cite, diff their amendment
+  dates) is fully scoped in [`docs/RESEARCH_AGENT_REDESIGN.md`](docs/RESEARCH_AGENT_REDESIGN.md),
+  not yet built.
 
 ## Stack
 

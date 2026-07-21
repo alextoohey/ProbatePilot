@@ -22,6 +22,14 @@ from store.redis_client import (
     set_research_run_state,
 )
 
+# This module searches Google News RSS and keyword-matches for relevance — an
+# unofficial source with no real judgment behind it (no LLM call anywhere in
+# here despite the name). It's also not wired to anything: no frontend
+# trigger, no scheduler. A better, source-verified redesign (poll the actual
+# CA statute/form pages this app's rules already cite, diff their amendment
+# dates, and use Claude only once a real change is confirmed) is fully scoped
+# in docs/RESEARCH_AGENT_REDESIGN.md — not yet built.
+
 LOGGER = logging.getLogger(__name__)
 DEFAULT_WAKE_INTERVAL = timedelta(days=7)
 DEFAULT_NEWS_ITEMS_PER_QUERY = 3

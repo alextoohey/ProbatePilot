@@ -98,7 +98,7 @@ language for what it is best at; do not collapse everything into one stack.
 | Document parsers (will/bank/deed/creditor) | `agent/documents/` |
 | Upload → extract → merge → embed pipeline | `agent/documents/upload_pipeline.py` |
 | DeadlineAgent (tool-use loop) | `agent/agents/deadline_agent.py` |
-| ResearchAgent (weekly probate-law watch) | `agent/researcher/research_agent.py` |
+| ResearchAgent (news-search prototype, not wired to any trigger — see `docs/RESEARCH_AGENT_REDESIGN.md`) | `agent/researcher/research_agent.py` |
 | CA probate rules | `agent/rules/california_probate.py` |
 | Auth (bcrypt + sessions) | `agent/auth/security.py` |
 | Email notifications (Resend) | `agent/notify/email.py` |
