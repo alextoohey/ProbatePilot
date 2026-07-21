@@ -280,10 +280,7 @@ export function AuthLanding({
               <div style={{ display: "grid", gap: 16 }}>
                 <Input label="Email" type="email" value={loginEmail} onChange={(e) => { setLoginEmail(e.target.value); setLoginError(""); }} placeholder="you@example.com" />
                 <div>
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                    <label htmlFor="login-pass" style={{ fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)" }}>Password</label>
-                    <button type="button" style={{ background: "none", border: "none", color: "var(--text-link)", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", fontWeight: 500, cursor: "pointer", padding: 0 }}>Forgot password?</button>
-                  </div>
+                  <label htmlFor="login-pass" style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--text-strong)", marginBottom: 6 }}>Password</label>
                   <Input id="login-pass" type="password" value={loginPassword} onChange={(e) => { setLoginPassword(e.target.value); setLoginError(""); }} placeholder="Your password" />
                 </div>
               </div>
