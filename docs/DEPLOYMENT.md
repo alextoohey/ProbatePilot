@@ -3,8 +3,8 @@
 ProbatePilot is two services: the Python agent (`agent/`) and the Next.js
 frontend (`web/`). Deploy the agent first, then point the frontend at it.
 
-Everything here is optional beyond `ANTHROPIC_API_KEY` — the app is designed
-to degrade gracefully. See [`agent/.env.example`](../agent/.env.example) and
+Everything here is optional beyond `ANTHROPIC_API_KEY` and `REDIS_URL` — the app is
+designed to degrade gracefully. See [`agent/.env.example`](../agent/.env.example) and
 [`web/.env.local.example`](../web/.env.local.example) for the full, authoritative list of
 what each key unlocks.
 
@@ -12,13 +12,17 @@ what each key unlocks.
 
 A `render.yaml` blueprint is included at the repo root.
 
-1. Push this repo to your own GitHub account.
-2. In the [Render dashboard](https://dashboard.render.com), choose **New +** →
+1. Provision a [Redis Cloud](https://redis.io/cloud/) instance first (Redis 8, for its
+   Vector Sets support — the free tier is enough). You'll need its connection string for
+   the next step. Never put a real value in a committed file — see
+   [`docs/database.md`](database.md#never-commit-a-real-redis_url) for why.
+2. Push this repo to your own GitHub account.
+3. In the [Render dashboard](https://dashboard.render.com), choose **New +** →
    **Blueprint**, and point it at your fork.
-3. Render reads `render.yaml` and provisions a free web service from
-   `agent/Dockerfile`. It will prompt for `ANTHROPIC_API_KEY` (required) and
-   `OPENAI_API_KEY` / `RESEND_API_KEY` (optional) at first deploy.
-4. Once live, note the service URL (`https://probatepilot-agent-xxxx.onrender.com`).
+4. Render reads `render.yaml` and provisions a free web service from
+   `agent/Dockerfile`. It will prompt for `ANTHROPIC_API_KEY` and `REDIS_URL` (both
+   required) and `OPENAI_API_KEY` (optional) at first deploy.
+5. Once live, note the service URL (`https://probatepilot-agent-xxxx.onrender.com`).
    Confirm it's healthy: `curl https://<your-service>.onrender.com/health`.
 
 **Any Docker host works the same way** — `agent/Dockerfile` builds standalone
@@ -26,12 +30,13 @@ A `render.yaml` blueprint is included at the repo root.
 root) and reads `$PORT` at runtime, so Railway, Fly.io, and Cloud Run all work
 without changes.
 
-The default `STORE_BACKEND=memory` means estate data lives in the container's
-memory and resets on restart — fine for a demo. For persistence, provision a
-[Redis Cloud](https://redis.io/cloud/) instance (Redis 8, for its Vector Sets
-support) and set `STORE_BACKEND=redis_cloud` + `REDIS_URL=rediss://...`. Never
-put a real value in a committed file — see
-[`docs/database.md`](database.md#never-commit-a-real-redis_url) for why.
+**Why Redis Cloud instead of the default `STORE_BACKEND=memory`:** the memory backend
+keeps all estate data, including real registered accounts (not just the demo estate), in
+the container's RAM. Render's free tier spins the container down after 15 minutes idle and
+starts a clean process on the next request — memory-backed data doesn't survive that, so a
+real account made yesterday would just be gone. `render.yaml` defaults to
+`STORE_BACKEND=redis_cloud` for exactly this reason; `memory` is still fine for local dev
+or a throwaway demo where that reset is acceptable.
 
 ## 2. Deploy the frontend (Vercel)
 

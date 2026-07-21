@@ -2,9 +2,19 @@
 # in the Render dashboard, pointing at this repo. See docs/DEPLOYMENT.md for
 # the full walkthrough (including the Vercel side, which Render doesn't host).
 #
-# Only ANTHROPIC_API_KEY is required to boot — everything else degrades
-# gracefully (see the agent README). Render prompts for any env var marked
-# sync: false at first deploy.
+# Only ANTHROPIC_API_KEY and REDIS_URL are required to boot — everything else
+# degrades gracefully (see the agent README). Render prompts for any env var
+# marked sync: false at first deploy.
+#
+# STORE_BACKEND=redis_cloud (not memory): the free/memory backend loses every
+# account, not just the demo estate, on Render's free-tier idle spin-down —
+# see docs/DEPLOYMENT.md for why. Bring your own Redis Cloud instance (free
+# tier is enough) and paste its connection string as REDIS_URL below.
+#
+# RESEND_API_KEY/EMAIL_FROM are intentionally omitted — email notifications
+# are gated off in the UI (EMAIL_NOTIFICATIONS_ENABLED=false) until a
+# verified sending domain exists, see docs/DEPLOYMENT.md's "Known follow-up:
+# Email delivery" — no key to set until that's revisited.
 services:
   - type: web
     name: probatepilot-agent
@@ -19,8 +29,6 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: STORE_BACKEND
-        value: memory
-      - key: RESEND_API_KEY
+        value: redis_cloud
+      - key: REDIS_URL
         sync: false
-      - key: EMAIL_FROM
-        value: onboarding@resend.dev
