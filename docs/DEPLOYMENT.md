@@ -230,6 +230,33 @@ end-to-end for this app, gotchas included.
    the Console GUI (trigger → **Edit** → Included files filter, under Advanced). Verify with
    `gcloud builds triggers describe probatepilot-agent-deploy --region=us-west1
    --format="yaml(includedFiles,ignoredFiles)"`.
+9. **If the GitHub repo is ever renamed, the trigger silently stops firing** — hit this
+   live, confirmed by pushing a real commit after a repo rename and finding no new build
+   ever appeared (`gcloud builds list`), with no error surfaced anywhere. Two plausible
+   causes to rule out in order:
+   - The GitHub App's repo-selection scope can reset or need re-confirming after a rename
+     (same root cause as step 6's gotcha) — check
+     **github.com/settings/installations** → "Google Cloud Build" → **Configure** first.
+   - If that's already correctly scoped: the actual cause here was that
+     `gcloud builds repositories describe probatepilot-repo --connection=probatepilot-github
+     --region=us-west1` still showed the **old** `remoteUri` after the rename — there's no
+     `update` command for this resource, only `create`/`delete`/`describe`/`list`. Webhook
+     delivery matching apparently uses that stored URL rather than GitHub's stable repo ID,
+     so a push tagged with the new name gets silently dropped. Fix: delete and recreate the
+     repository resource with the current URL —
+     ```bash
+     gcloud builds repositories delete probatepilot-repo \
+       --connection=probatepilot-github --region=us-west1
+     gcloud builds repositories create probatepilot-repo \
+       --connection=probatepilot-github --region=us-west1 \
+       --remote-uri="https://github.com/<you>/<new-repo-name>.git"
+     ```
+     The trigger references the repository by resource *name* (`probatepilot-repo`), not
+     by URL, so it keeps working against the recreated resource without needing to be
+     touched itself — confirmed by a manual `gcloud builds triggers run` succeeding
+     immediately after the recreation. Verify the actual webhook path too, not just the
+     manual one, by pushing a real commit and confirming a new build appears in
+     `gcloud builds list` without running anything manually.
 
 ### Vercel: connect the Git repository
 

@@ -7,6 +7,16 @@
 # passed, so ANTHROPIC_API_KEY / OPENAI_API_KEY / REDIS_URL / STORE_BACKEND (set once,
 # manually, when the service was first created) carry forward automatically. This also
 # means no secret ever needs to live in this file, which is committed and public.
+#
+# If the GitHub repo is ever renamed again: this trigger silently stops firing, with no
+# error anywhere. Root cause, found the hard way: `gcloud builds repositories describe`
+# keeps the *old* remoteUri after a rename (there's no `update` command for it), and
+# webhook delivery apparently matches against that stored URL rather than GitHub's stable
+# repo ID, so a push tagged with the new name gets silently dropped. Fix: delete and
+# recreate the repository resource with the current URL -
+# `gcloud builds repositories delete probatepilot-repo --connection=probatepilot-github
+# --region=us-west1` then `... create ... --remote-uri=<new-url>`. The trigger references
+# the resource by name, not URL, so it doesn't need to be touched. See docs/DEPLOYMENT.md.
 steps:
   - name: "gcr.io/cloud-builders/docker"
     args:
