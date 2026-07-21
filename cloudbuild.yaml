@@ -1,0 +1,37 @@
+# Cloud Build config for the agent/ service, run automatically on every push to main
+# by the "probatepilot-agent-deploy" trigger (see docs/DEPLOYMENT.md). Builds
+# agent/Dockerfile, pushes it to Artifact Registry, and deploys it to Cloud Run.
+#
+# Deliberately does NOT pass --set-env-vars: Cloud Run's `gcloud run deploy` bases a new
+# revision on the currently-serving revision's config and only overrides what's explicitly
+# passed, so ANTHROPIC_API_KEY / OPENAI_API_KEY / REDIS_URL / STORE_BACKEND (set once,
+# manually, when the service was first created) carry forward automatically. This also
+# means no secret ever needs to live in this file, which is committed and public.
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "agent/Dockerfile"
+      - "-t"
+      - "us-west1-docker.pkg.dev/$PROJECT_ID/probatepilot/agent:$COMMIT_SHA"
+      - "."
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "us-west1-docker.pkg.dev/$PROJECT_ID/probatepilot/agent:$COMMIT_SHA"
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - "run"
+      - "deploy"
+      - "probatepilot-agent"
+      - "--image=us-west1-docker.pkg.dev/$PROJECT_ID/probatepilot/agent:$COMMIT_SHA"
+      - "--region=us-west1"
+      - "--allow-unauthenticated"
+
+images:
+  - "us-west1-docker.pkg.dev/$PROJECT_ID/probatepilot/agent:$COMMIT_SHA"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
