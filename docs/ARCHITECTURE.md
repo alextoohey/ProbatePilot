@@ -96,14 +96,30 @@ GitHub (main)
 - **Redis Cloud is fully decoupled from the compute layer.** The agent holds nothing more
   than a `REDIS_URL` connection string; persistence has no dependency on which platform is
   currently running the container.
+- **A weekly Cloud Scheduler job (`probatepilot-redis-keepalive`) prevents a real, documented
+  risk**: Redis Cloud's free tier deletes a database after 14 consecutive days with no read
+  or write commands (per Redis's own SLA/AUP), which a portfolio deploy's sporadic traffic
+  could genuinely hit. It targets the already-unauthenticated `GET /estate/demo-milligan` —
+  a plain Redis read, deliberately not `/seed`, which would also run a real (small but
+  nonzero) Claude API call every week for no benefit to the actual goal.
+- **The two deploy pipelines aren't equally resilient to a GitHub repo rename, and that
+  difference was found by testing, not assumed.** After renaming the repo, Cloud Build's
+  auto-deploy silently stopped firing entirely (confirmed: a real push produced zero new
+  builds) — its `repository` resource had cached the *old* URL with no `update` command to
+  fix it in place, only delete-and-recreate. Vercel's equivalent pipeline needed no
+  intervention at all; a push right after the same rename produced a new deployment
+  correctly aliased under the standard git-triggered pattern
+  (`probatepilot-git-main-*.vercel.app`), confirming it tracks the connected repo more
+  robustly than Cloud Build's resource model does.
 
 Full setup — every command, every IAM grant, and every real gotcha hit doing this end to
 end (a GitHub App silently scoped to a differently-named repository, an ARM64/amd64 image
 mismatch specific to building on Apple Silicon, a monorepo `Root Directory` config that
-broke CLI redeploys after a dashboard-based reconnect, and two separate Cloud Build CLI
+broke CLI redeploys after a dashboard-based reconnect, two separate Cloud Build CLI
 operations that failed with an opaque error where the Console GUI succeeded on the first
-try) — is documented in [`docs/DEPLOYMENT.md`](DEPLOYMENT.md), written from what actually
-happened rather than an idealized run-through.
+try, and the repo-rename/webhook issue above) — is documented in
+[`docs/DEPLOYMENT.md`](DEPLOYMENT.md), written from what actually happened rather than an
+idealized run-through.
 
 ## Project Layout
 

@@ -291,6 +291,14 @@ rebuild at all. Settings changes here only apply to the *next* deployment, not r
 — redeploy once after changing them to confirm (`vercel --prod --yes` from the repo root) if
 you want to verify immediately rather than wait for the next real push.
 
+**Unlike Cloud Build (see step 9 above), Vercel needed no fix at all after a GitHub repo
+rename.** Tested directly: pushed a real commit right after renaming this app's repo, and a
+new production deployment appeared automatically, correctly aliased under the standard
+git-triggered URL pattern (`<project>-git-main-*.vercel.app`) — confirmed via `vercel
+inspect <url>`, not just assumed from the dashboard showing green. Vercel's Git integration
+apparently tracks the connected repository more robustly than Cloud Build's `repositories`
+resource does; no `remoteUri`-equivalent staleness issue here.
+
 ## Notes
 
 - **Redis Cloud free-tier inactivity reclaim**: per Redis Cloud's own SLA/AUP, a
