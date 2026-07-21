@@ -146,6 +146,7 @@ tasks: Task[]
 alerts: Alert[]
 letters: SavedLetter[]      # drafts saved to the estate
 phase: 1 | 2 | 3 | 4 | 5 | 6
+isDemo: bool                # true for demo-{uuid} estates — see Demo Scenario below
 createdAt: str
 updatedAt: str
 ```
@@ -193,7 +194,7 @@ is a pure function of `EstateState`, no LLM required to fire it.
 
 | Rule | Trigger | Deadline | Consequence |
 |------|---------|----------|-------------|
-| DE-111 Probate Petition | Date of death known | File ASAP | No legal authority until filed |
+| DE-111 Probate Petition (§8000) | Date of death known | File ASAP | No legal authority until filed |
 | Death certificates | Date of death | Order immediately | Every institution requires one |
 | Letters Testamentary | Petition filed | After court appointment | Blocks all downstream administration |
 | DE-160 Inventory & Appraisal | Letters testamentary issued | 4 months | Court sanctions, personal liability |

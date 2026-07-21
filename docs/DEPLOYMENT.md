@@ -62,9 +62,12 @@ The live app is empty until the demo estate exists. Either:
   every request is proxied through Next.js API routes (`web/app/api/agent/[...path]`),
   which forward the session cookie as a Bearer token server-side. No CORS
   configuration is needed on the agent.
-- **Auth**: every estate-scoped endpoint requires a session and ownership,
-  except the seeded demo estate, which stays world-readable so the "Try the
-  demo" flow works without registration. See `agent/api/deps.py`.
+- **Auth**: every estate-scoped endpoint requires a session and ownership, no exceptions —
+  "Try the demo" is automated, not unauthenticated: it mints a real session on a fresh,
+  independent copy of the seed estate for that visitor only, so no registration form is
+  needed but every visitor still owns their own isolated estate. See `agent/api/deps.py`
+  and `agent/api/routers/auth.py`'s `demo_login()`. The one true exception is the canonical
+  `demo-milligan` record itself, which stays world-readable for `/seed`-based testing.
 
 ## Known follow-up: Next.js / Sentry major version upgrade
 
