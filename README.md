@@ -5,7 +5,7 @@
 Built in 24 hours at UC Berkeley AI Hackathon 2026 by a 4-person team, for the
 technology-and-social-impact track.
 
-![ProbatePilot dashboard — two critical alerts on the seeded demo estate](docs/assets/dashboard.png)
+![ProbatePilot dashboard — critical alerts on the seeded demo estate](docs/assets/dashboard.png)
 
 [Run it locally in 3 commands](#quick-start) — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 to put up a live version.

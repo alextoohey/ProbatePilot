@@ -72,9 +72,14 @@ def test_alert_ranking_puts_critical_alerts_first(monkeypatch) -> None:
     assert alerts[0].id == "alert-creditor-notice"
     assert alerts[0].severity == "critical"
     assert alerts[0].timingStatus == "dated"
-    assert alerts[1].id == "alert-de-160-inventory"
+    # state-agency-notice is also critical/liability-typed, and outranks the
+    # deadline-typed de-160 alert in TYPE_RANK regardless of days remaining.
+    assert alerts[1].id == "alert-state-agency-notice"
     assert alerts[1].severity == "critical"
     assert isinstance(alerts[1].daysRemaining, int)
+    assert alerts[2].id == "alert-de-160-inventory"
+    assert alerts[2].severity == "critical"
+    assert isinstance(alerts[2].daysRemaining, int)
 
 
 def test_deterministic_alerts_assign_timing_status() -> None:

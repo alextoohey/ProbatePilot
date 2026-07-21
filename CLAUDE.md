@@ -236,7 +236,10 @@ on the full Claude-enhanced `run_deadline_agent()`.
 Designed to fire live during the demo (exact day counts depend on the run date):
 1. **CRITICAL** — Creditors not yet notified; the 30-day certified-mail window from the
    June 10 appointment is closing.
-2. **CRITICAL** — DE-160 Inventory & Appraisal outstanding with no property appraisal on
+2. **CRITICAL** — State agencies (Medi-Cal/DHCS, FTB, Victim Compensation, child support)
+   not yet notified; the 90-day window from appointment (CA Probate Code §9202) is closing —
+   Medi-Cal estate recovery is a real, common personal-liability trap.
+3. **CRITICAL** — DE-160 Inventory & Appraisal outstanding with no property appraisal on
    the Berkeley home or the Honda Civic.
 
 Full seed object: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#demo-scenario).

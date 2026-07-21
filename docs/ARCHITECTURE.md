@@ -71,21 +71,24 @@ is a pure function of `EstateState`, no LLM required to fire it.
 
 | Rule | Trigger | Deadline | Consequence |
 |------|---------|----------|-------------|
-| DE-140 Probate Petition | Date of death known | File ASAP | No legal authority until filed |
+| DE-111 Probate Petition | Date of death known | File ASAP | No legal authority until filed |
 | Death certificates | Date of death | Order immediately | Every institution requires one |
 | Letters Testamentary | Petition filed | After court appointment | Blocks all downstream administration |
 | DE-160 Inventory & Appraisal | Letters testamentary issued | 4 months | Court sanctions, personal liability |
-| Creditor notification (certified mail) | Letters testamentary issued | 30 days | Personal liability for late distributions |
+| Creditor notification (certified mail, §9051) | Letters testamentary issued | 30 days | Personal liability for late distributions |
+| State agency notice (Medi-Cal/DHCS, FTB, Victim Comp, child support, §9202) | Letters testamentary issued | 90 days | Personal liability, especially Medi-Cal estate recovery |
 | Estate EIN (IRS SS-4) | Legal authority granted | ASAP | Cannot open estate bank account |
 | Estate bank account | EIN obtained | ASAP | Estate funds must stay separate from personal funds |
-| Debt resolution | Creditor notice sent | Before distribution | Unresolved debts can block final distribution |
+| Debt resolution (§11420) | Creditor notice sent | Before distribution | Unresolved debts can block final distribution |
 | Final 1040 (personal) | Date of death | April 15 following year | IRS penalties |
-| Debt payment order | Any debt notified | Secured before unsecured/priority | Out-of-order payment = personal liability |
+| Debt payment order (§11420) | Any debt notified | Secured before unsecured/priority | Out-of-order payment = personal liability |
+| Petition for final distribution (§12200) | Letters testamentary issued | 1 year (18 months with a federal estate tax return) | Court can compel via order to show cause |
 
 Three more rules are real CA probate requirements the schema can't evaluate yet — newspaper
-notice (§9052), the creditor claim-period close, and Form 1041 — each needs a field
-(`firstPublicationDate`, `estateIncome`) `EstateState` doesn't track today. They're
-documented, not silently stubbed, directly above `CALIFORNIA_PROBATE_RULES` in the source.
+notice (§8121, form DE-121), the creditor claim-period close (§9100), and Form 1041 — each
+needs a field (`firstPublicationDate`, `estateIncome`) `EstateState` doesn't track today.
+They're documented, not silently stubbed, directly above `CALIFORNIA_PROBATE_RULES` in the
+source.
 
 **Debt payment order** is worth calling out: CA probate pays secured creditors before
 unsecured or priority ones, before any beneficiary distribution. There's no explicit

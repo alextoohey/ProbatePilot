@@ -64,6 +64,36 @@ def test_debt_order_flags_unsecured_notice_ahead_of_secured() -> None:
     assert "alert-debt-order" not in {alert.id for alert in evaluate_rules(correct_order, today=DEMO_TODAY)}
 
 
+def test_state_agency_notice_fires_and_clears_once_recorded() -> None:
+    estate = build_demo_estate()
+    alerts = {alert.id: alert for alert in evaluate_rules(estate, today=DEMO_TODAY)}
+
+    notice = alerts["alert-state-agency-notice"]
+    assert notice.severity == "critical"
+    assert notice.type == "liability"
+    assert "Medi-Cal" in notice.body
+    assert isinstance(notice.daysRemaining, int)
+
+    for task in estate.tasks:
+        if task.id == "task-notify-creditors":
+            task.status = "done"
+    from schemas.estate import Task
+
+    estate.tasks.append(Task(id="task-state-agency-notice", title="Notify state agencies (Medi-Cal, FTB)", status="done", phase=2))
+    cleared_alerts = {alert.id: alert for alert in evaluate_rules(estate, today=DEMO_TODAY)}
+    assert "alert-state-agency-notice" not in cleared_alerts
+
+
+def test_final_distribution_fires_at_low_urgency_for_a_fresh_estate() -> None:
+    alerts = {alert.id: alert for alert in evaluate_rules(build_demo_estate(), today=DEMO_TODAY)}
+
+    distribution = alerts["alert-final-distribution"]
+    assert distribution.type == "deadline"
+    assert distribution.severity == "info"
+    assert isinstance(distribution.daysRemaining, int)
+    assert distribution.daysRemaining > 30
+
+
 def test_alert_output_is_stable_across_repeated_calls() -> None:
     estate = build_demo_estate()
 

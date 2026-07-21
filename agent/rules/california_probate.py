@@ -20,17 +20,33 @@ class ProbateRule:
 
 
 CALIFORNIA_PROBATE_RULES = [
-    ProbateRule("de-140", "DE-140 Probate Petition", "CA Probate Code", "dateOfDeath", "ASAP", "No legal authority until filed"),
+    ProbateRule("de-140", "DE-111 Probate Petition", "CA Probate Code §8000", "dateOfDeath", "ASAP", "No legal authority until filed"),
     ProbateRule("death-certificates", "Death certificates", "Operational requirement", "dateOfDeath", "Immediately", "Institutions require certified copies"),
     ProbateRule("letters-testamentary", "Letters Testamentary", "Court appointment prerequisite", "filedPetition", "After court appointment", "Estate administration requires proof of legal authority"),
     ProbateRule("de-160", "DE-160 Inventory & Appraisal", "CA Probate Code", "appointmentDate", "4 months", "Court sanctions and personal liability"),
     ProbateRule("creditor-notice", "Creditor notification", "CA Probate Code §9051", "appointmentDate", "30 days", "Personal liability for late distributions"),
     ProbateRule("estate-ein", "Estate EIN", "IRS SS-4", "estateBanking", "ASAP", "Cannot open estate bank account"),
     ProbateRule("estate-bank-account", "Estate bank account", "Operational prerequisite", "legalAuthorityAndEin", "ASAP", "Estate funds should be kept separate from personal funds"),
-    ProbateRule("debt-resolution", "Debt resolution", "CA Probate administration", "creditorNotice", "Before distribution", "Unresolved debts can block final distribution"),
+    ProbateRule("debt-resolution", "Debt resolution", "CA Probate Code §11420", "creditorNotice", "Before distribution", "Unresolved debts can block final distribution"),
     ProbateRule("final-1040", "Final 1040", "IRS", "dateOfDeath", "April 15 following year", "IRS penalties"),
-    ProbateRule("debt-order", "Debt payment order", "CA Probate Code", "beforeDistribution", "Sequential", "Out-of-order payments create personal liability"),
+    ProbateRule("debt-order", "Debt payment order", "CA Probate Code §11420", "beforeDistribution", "Sequential", "Out-of-order payments create personal liability"),
     ProbateRule("appraisal-needed", "Property appraisal needed", "CA Probate Code", "beforeDE160", "Before DE-160", "Blocks inventory filing"),
+    ProbateRule(
+        "state-agency-notice",
+        "State agency notice (Medi-Cal, FTB, Victim Compensation, Child Support)",
+        "CA Probate Code §9202",
+        "appointmentDate",
+        "90 days",
+        "Personal liability for unpaid state claims, especially Medi-Cal estate recovery",
+    ),
+    ProbateRule(
+        "final-distribution",
+        "Petition for final distribution",
+        "CA Probate Code §12200",
+        "appointmentDate",
+        "1 year (18 months if a federal estate tax return is due)",
+        "Court can compel distribution via order to show cause",
+    ),
 ]
 
 # Rules that are real CA probate requirements but can't be evaluated
@@ -39,9 +55,11 @@ CALIFORNIA_PROBATE_RULES = [
 # rule count and the DeadlineAgent's `list_california_probate_rules` tool
 # only ever report rules that can actually fire.
 #
-#   newspaper-notice (CA Probate Code §9052) — needs firstPublicationDate
-#     and a record of each publication run.
-#   claim-period (CA Probate Code) — needs firstPublicationDate plus a
+#   newspaper-notice (CA Probate Code §8121, form DE-121) — needs
+#     firstPublicationDate and a record of each publication run. (Was
+#     previously miscited as §9052, which is creditor-notice *contents*,
+#     not newspaper publication.)
+#   claim-period (CA Probate Code §9100) — needs firstPublicationDate plus a
 #     distribution-status flag to gate "don't distribute before this closes".
 #   form-1041 (IRS) — needs estateIncome and the estate's tax year end to
 #     decide the >$600 filing trigger.
@@ -65,10 +83,12 @@ def evaluate_rules(estate: EstateState, today: date | None = None) -> list[Alert
         _evaluate_estate_bank_account,
         _evaluate_de_160_inventory,
         _evaluate_creditor_notification,
+        _evaluate_state_agency_notice,
         _evaluate_debt_resolution,
         _evaluate_final_1040,
         _evaluate_debt_payment_order,
         _evaluate_property_appraisal_needed,
+        _evaluate_final_distribution,
     ):
         alerts.extend(rule_check(estate, today))
 
@@ -92,13 +112,13 @@ def _evaluate_de_140_probate_petition(estate: EstateState, today: date) -> list[
             severity="critical",
             alert_type="rule_violation",
             timing_status="blocking",
-            title="Probate petition (DE-140) is not on file",
+            title="Probate petition (DE-111) is not on file",
             body=(
                 f"Rule de-140 ({rule.title}) is triggered by dateOfDeath={death_date.isoformat()}. "
-                f"No DE-140/probate petition document is recorded after {days_since_death} days. "
+                f"No DE-111/probate petition document is recorded after {days_since_death} days. "
                 f"Consequence: {rule.consequence}."
             ),
-            action="File the probate petition (DE-140) or upload the filed petition to establish legal authority.",
+            action="File the probate petition (DE-111) or upload the filed petition to establish legal authority.",
             days_remaining=None,
         )
     ]
@@ -243,6 +263,46 @@ def _evaluate_creditor_notification(estate: EstateState, today: date) -> list[Al
     ]
 
 
+def _evaluate_state_agency_notice(estate: EstateState, today: date) -> list[Alert]:
+    """CA Probate Code §9202: within 90 days of Letters, the personal
+    representative must notify the Department of Health Care Services
+    (Medi-Cal estate recovery), the Franchise Tax Board, the Victim
+    Compensation Board, and any child support agency with a potential claim.
+    Medi-Cal estate recovery in particular is a real, common personal-
+    liability trap that isn't otherwise tracked anywhere in this app."""
+    rule = RULES_BY_ID["state-agency-notice"]
+    if not _has_legal_authority(estate) or _state_agency_notice_recorded(estate):
+        return []
+    appointment = _required_date(estate, "appointmentDate", rule, today)
+    if isinstance(appointment, Alert):
+        return [appointment]
+
+    due = appointment + relativedelta(days=90)
+    return [
+        _alert(
+            rule=rule,
+            today=today,
+            alert_id="alert-state-agency-notice",
+            severity="critical",
+            alert_type="liability",
+            timing_status="dated",
+            title="State agencies have not been notified",
+            body=(
+                f"Rule state-agency-notice ({rule.title}; {rule.statute}) is due {due.isoformat()} "
+                f"from appointmentDate={appointment.isoformat()}. California requires notifying the "
+                "Department of Health Care Services (Medi-Cal estate recovery), the Franchise Tax "
+                "Board, the Victim Compensation Board, and any child support agency with a potential "
+                f"claim against the decedent. Consequence: {rule.consequence}."
+            ),
+            action=(
+                "Send the required notices to DHCS, the Franchise Tax Board, the Victim Compensation "
+                "Board, and any child support agency, and record the date sent."
+            ),
+            days_remaining=(due - today).days,
+        )
+    ]
+
+
 def _evaluate_estate_ein(estate: EstateState, today: date) -> list[Alert]:
     rule = RULES_BY_ID["estate-ein"]
     if not _has_legal_authority(estate) or _estate_ein_recorded(estate):
@@ -382,6 +442,41 @@ def _evaluate_debt_payment_order(estate: EstateState, today: date) -> list[Alert
     ]
 
 
+def _evaluate_final_distribution(estate: EstateState, today: date) -> list[Alert]:
+    """CA Probate Code §12200: the personal representative must petition for
+    final distribution, or file a status report, within one year of Letters
+    issuing (18 months if a federal estate tax return is required). §12201
+    lets the court compel this via an order to show cause."""
+    rule = RULES_BY_ID["final-distribution"]
+    if not _has_legal_authority(estate) or _final_distribution_recorded(estate):
+        return []
+    appointment = _required_date(estate, "appointmentDate", rule, today)
+    if isinstance(appointment, Alert):
+        return [appointment]
+
+    due = appointment + relativedelta(years=1)
+    return [
+        _alert(
+            rule=rule,
+            today=today,
+            alert_id="alert-final-distribution",
+            severity=_deadline_severity(due, today),
+            alert_type="deadline",
+            timing_status="dated",
+            title="Petition for final distribution is not on file",
+            body=(
+                f"Rule final-distribution ({rule.title}; {rule.statute}) is due {due.isoformat()} "
+                f"from appointmentDate={appointment.isoformat()}. California requires the personal "
+                "representative to petition for final distribution, or file a status report with the "
+                "court, within one year of Letters issuing (18 months if a federal estate tax return "
+                f"is required). Consequence: {rule.consequence}."
+            ),
+            action="File the petition for final distribution, or a status report if the estate isn't ready to close.",
+            days_remaining=(due - today).days,
+        )
+    ]
+
+
 def _evaluate_property_appraisal_needed(estate: EstateState, today: date) -> list[Alert]:
     # Intentionally a no-op: unappraised-asset detection already lives in
     # _evaluate_de_160_inventory (the only place appraisal status blocks a
@@ -472,8 +567,8 @@ def _alert(
 
 def _petition_filed(estate: EstateState) -> bool:
     return (
-        _has_document(estate, "de-140", "probate petition")
-        or _task_done(estate, "file probate petition", "de-140")
+        _has_document(estate, "de-111", "de-140", "probate petition")
+        or _task_done(estate, "file probate petition", "de-111", "de-140")
         or _rule_completed(estate, "alert-de-140-petition")
     )
 
@@ -514,6 +609,22 @@ def _creditor_notice_recorded(estate: EstateState) -> bool:
         or _has_document(estate, "creditor notice")
         or _task_done(estate, "notify all known creditors", "creditor notice")
         or _rule_completed(estate, "alert-creditor-notice")
+    )
+
+
+def _state_agency_notice_recorded(estate: EstateState) -> bool:
+    return (
+        _has_document(estate, "state agency notice", "medi-cal notice", "dhcs notice", "9202")
+        or _task_done(estate, "notify state agencies", "medi-cal", "dhcs")
+        or _rule_completed(estate, "alert-state-agency-notice")
+    )
+
+
+def _final_distribution_recorded(estate: EstateState) -> bool:
+    return (
+        _has_document(estate, "final distribution", "petition for final distribution", "status report")
+        or _task_done(estate, "final distribution", "status report")
+        or _rule_completed(estate, "alert-final-distribution")
     )
 
 
