@@ -92,6 +92,13 @@ dimensions. Redis Vector Sets infer their dimension on first `VADD`, so the firs
 written to an estate set must be the same dimension as all future vectors for that estate.
 If the embedding model changes, reset/rebuild that estate's vector set.
 
+Without `OPENAI_API_KEY` (or if the OpenAI call fails), `agent/llm/embeddings.py` falls back
+to a deterministic hashing-trick bag-of-words vector — still exactly 1536 dimensions, so it
+stays dimension-compatible with anything already written by real OpenAI embeddings. It's not
+a real semantic embedding (no synonym/paraphrase understanding), but unlike hashing the whole
+text as one blob, it hashes per-word, so texts sharing words score meaningfully more similar
+than unrelated ones instead of the near-zero correlation a naive whole-string hash produces.
+
 ## Stable Store API
 
 These functions are the boundary the rest of the app should rely on:

@@ -323,21 +323,30 @@ export function ChatScreen({ estate }: Props) {
     setRecording(false);
   }
 
-  async function transcribeBlob(blob: Blob): Promise<string> {
+  async function transcribeBlob(blob: Blob): Promise<{ transcript: string; notConfigured: boolean }> {
     try {
       const res = await fetch("/api/voice/transcribe", { method: "POST", headers: { "content-type": blob.type || "audio/webm" }, body: blob });
+      if (res.status === 503) {
+        const body = await res.json().catch(() => null);
+        if (body?.error === "voice_not_configured") return { transcript: "", notConfigured: true };
+      }
       if (!res.ok) throw new Error(`transcribe ${res.status}`);
       const { transcript } = await res.json();
-      return (transcript as string) ?? "";
+      return { transcript: (transcript as string) ?? "", notConfigured: false };
     } catch (err) {
       console.error(err);
-      return "";
+      return { transcript: "", notConfigured: false };
     }
+  }
+
+  function showVoiceNotConfiguredMessage() {
+    setMsgs((m) => [...m, { from: "ai", text: "Voice isn't set up yet — type your question instead." }]);
   }
 
   // Hold-to-speak: one push-to-talk turn that also reads the reply back aloud.
   async function transcribe(blob: Blob) {
-    const transcript = await transcribeBlob(blob);
+    const { transcript, notConfigured } = await transcribeBlob(blob);
+    if (notConfigured) { showVoiceNotConfiguredMessage(); return; }
     if (!transcript) return;
     const reply = await send(transcript);
     if (reply.trim()) void speak(reply);
@@ -445,7 +454,12 @@ export function ChatScreen({ estate }: Props) {
       if (!blob) continue; // nothing captured — keep listening
 
       setVoiceStatus("thinking");
-      const transcript = await transcribeBlob(blob);
+      const { transcript, notConfigured } = await transcribeBlob(blob);
+      if (notConfigured) {
+        showVoiceNotConfiguredMessage();
+        stopVoiceMode();
+        break;
+      }
       if (!voiceModeRef.current) break;
       if (!transcript.trim()) continue;
 

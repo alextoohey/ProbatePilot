@@ -1,5 +1,13 @@
 import { createClient } from "@deepgram/sdk";
 
+/** Checked by the voice API routes before calling into the SDK at all, so a
+ * missing key returns a clean, expected 503 instead of an unhandled throw
+ * that Next.js turns into a generic 500. Same pattern as the Python side's
+ * `email_configured()` in agent/notify/email.py. */
+export function isDeepgramConfigured(): boolean {
+  return Boolean(process.env.DEEPGRAM_API_KEY);
+}
+
 function getClient() {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {

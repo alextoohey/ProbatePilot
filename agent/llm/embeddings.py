@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
+from math import sqrt
 
 import openai
 
@@ -64,11 +66,28 @@ def embed_query(text: str) -> list[float]:
         return embed_texts([text])[0]
 
 
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
 def _embed_one(text: str) -> list[float]:
-    values: list[float] = []
-    counter = 0
-    while len(values) < VECTOR_SIZE:
-        digest = hashlib.sha256(f"{counter}:{text}".encode()).digest()
-        values.extend(((byte / 255) * 2) - 1 for byte in digest)
-        counter += 1
-    return values[:VECTOR_SIZE]
+    """Deterministic fallback used only when OPENAI_API_KEY is unset or the
+    real embedding call fails. This is a hashing-trick bag-of-words vector
+    (Weinberger et al.), not a real semantic embedding — it has no notion of
+    synonyms or paraphrase. But unlike hashing the whole string as one blob
+    (the previous approach), two texts that share words produce vectors that
+    actually overlap in those hashed dimensions, so cosine similarity
+    correlates with real lexical overlap instead of being pure noise. Each
+    word hashes to one of VECTOR_SIZE buckets with a random +1/-1 sign (an
+    unbiased estimator that reduces collision bias), and the result is
+    L2-normalized so document length doesn't skew similarity scores."""
+    vector = [0.0] * VECTOR_SIZE
+    for token in _TOKEN_RE.findall(text.lower()):
+        digest = hashlib.sha256(token.encode()).digest()
+        bucket = int.from_bytes(digest[:4], "big") % VECTOR_SIZE
+        sign = 1.0 if digest[4] & 1 else -1.0
+        vector[bucket] += sign
+
+    norm = sqrt(sum(value * value for value in vector))
+    if norm == 0:
+        return vector
+    return [value / norm for value in vector]

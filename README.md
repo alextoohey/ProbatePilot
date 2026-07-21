@@ -120,11 +120,14 @@ make dev       # agent on :8000, web on :3000
 `ANTHROPIC_API_KEY` in `agent/.env` is the only key the app requires to run at all — Redis,
 Deepgram, Resend, and Phoenix are all genuinely optional and degrade cleanly when unset (the
 default `STORE_BACKEND=memory` is a real, fully-working store, not a stub — it just doesn't
-persist across restarts). `OPENAI_API_KEY` is a step above the rest, though: without it,
-chat still runs rather than erroring, but falls back to a deterministic non-semantic
-embedding, so retrieval stops finding genuinely relevant chunks — set it too if you want the
-RAG chat to actually demonstrate grounded answers rather than just avoid crashing. See
-[`agent/.env.example`](agent/.env.example) for the full list.
+persist across restarts; without `DEEPGRAM_API_KEY`, the mic button tells you voice isn't set
+up instead of silently doing nothing). `OPENAI_API_KEY` is a step above the rest, though:
+without it, chat still runs rather than erroring, but retrieval falls back to a deterministic
+hashing-trick bag-of-words vector instead of a real embedding — it still finds chunks that
+share literal words with the query (better than nothing), just no understanding of synonyms
+or paraphrasing. Set it too if you want the RAG chat to demonstrate genuinely grounded,
+semantically-relevant answers. See [`agent/.env.example`](agent/.env.example) for the full
+list.
 
 ```bash
 make test      # Python + TypeScript contract tests

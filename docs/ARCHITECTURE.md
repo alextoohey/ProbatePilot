@@ -230,7 +230,11 @@ Upload (PDF / image)
   → router detects document type (keyword match, filename fuzzy-match, or Claude)
   → structured extraction → validated into a Pydantic model
   → Phoenix span { action: document_parse, doc_type }
-  → embed rawChunks (OpenAI, 1536 dims) → upsert to the vector store, scoped to estate:{id}
+  → embed rawChunks (OpenAI 1536-dim, or a hashing-trick fallback if unconfigured)
+    → upsert to the vector store, scoped to estate:{id}
+    → a vector-store failure (e.g. Redis without Vector Sets support) is caught here —
+      logged and traced, not fatal; the document is saved either way, just not
+      searchable via chat until the store issue is fixed
   → merge structured facts into estate state (Redis KV)
   → trigger DeadlineAgent to re-evaluate
   → return { extraction, alerts }
@@ -239,7 +243,8 @@ Upload (PDF / image)
 ### Chat RAG (`agent/`, streamed to `web/`)
 
 ```
-Message (typed, or Deepgram transcription)
+Message (typed, or Deepgram transcription — the mic tells you plainly if
+  DEEPGRAM_API_KEY isn't set, via a 503 from /api/voice/*, instead of failing silently)
   → embed query → vector search (top-k within the estate's chunks)
   → load estate state from Redis KV
   → build system prompt: [base] + [estate state] + [retrieved chunks]

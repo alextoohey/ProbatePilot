@@ -74,6 +74,25 @@ def test_embeddings_are_1536_dimensional_deterministic_and_bounded() -> None:
     assert all(-1 <= value <= 1 for vector in first for value in vector)
 
 
+def test_fallback_embedding_captures_real_lexical_overlap() -> None:
+    """The OPENAI_API_KEY-unset fallback (a hashing-trick bag-of-words vector,
+    not a real semantic embedding) should still make texts that share words
+    score meaningfully more similar than texts that share none — unlike a
+    naive whole-string hash, which would put both pairs at ~0 regardless."""
+    similar_a, similar_b, unrelated = embed_texts([
+        "Wells Fargo checking account balance",
+        "Wells Fargo checking account statement",
+        "Grant deed property legal description",
+    ])
+
+    def cosine(left: list[float], right: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(left, right, strict=True))
+        return dot  # already unit-normalized by _embed_one
+
+    assert cosine(similar_a, similar_b) > 0.5
+    assert cosine(similar_a, unrelated) < 0.1
+
+
 def test_parse_document_endpoint_embeds_adds_document_and_returns_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
     import main
     from api.routers import documents
