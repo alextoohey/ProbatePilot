@@ -56,13 +56,17 @@ legal judgment, it says so plainly instead of guessing.
 │  Sentry                │                │  Phoenix tracing + evals │
 └───────────┬───────────┘                └─────────────┬─────────────┘
             │                                            │
-            └──────────────── Redis (estate KV + vector search) ─────┘
+            └──────────────── Redis Cloud (estate KV + vector search) ─────┘
 ```
 
 Two services, one shared store, each language doing what it's good at: Python owns Claude
 reasoning and document parsing, TypeScript owns everything the user touches. The browser
 never talks to the Python service directly — every call is proxied through Next.js, which
 forwards the session as a bearer token server-side, so there's no CORS surface to manage.
+**The deployed app persists to Redis Cloud** (Redis 8, KV + native Vector Sets for semantic
+search) — a real managed cloud database, not local/ephemeral storage. The in-process
+`memory` backend mentioned below exists purely so the repo boots with zero setup for local
+dev; it's not what's actually running behind the live deploy.
 
 **A few things worth a closer look if you're reading the code:**
 
@@ -73,9 +77,14 @@ forwards the session as a bearer token server-side, so there's no CORS surface t
   one. A missing API key or a bad model response both degrade to the same rule-evaluated
   alerts, just plainer prose. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - **The store is a real backend abstraction, not a wrapper around one database.**
-  `agent/store/` supports three interchangeable backends — in-memory (default, zero setup),
-  Upstash Redis, and Redis Cloud with Redis 8 Vector Sets for semantic search — behind one
-  API, selected by an env var.
+  `agent/store/` supports three interchangeable backends behind one API, selected by an env
+  var — **Redis Cloud (Redis 8, KV + Vector Sets) is what the deployed app actually runs
+  on**; an in-process in-memory backend (zero setup) and Upstash Redis are also fully
+  implemented, mainly useful for local dev without provisioning anything. Estates are
+  currently stored as one JSON string per estate rather than using Redis 8's native
+  RedisJSON path operations (already available on this exact instance) — a real, scoped
+  improvement, not a bottleneck at this app's scale: see
+  [`docs/REDIS_DATA_MODEL_MIGRATION.md`](docs/REDIS_DATA_MODEL_MIGRATION.md).
 - **Auth is session-based with real ownership checks, including in the demo.** Every
   estate-scoped endpoint requires a session and verifies the caller owns that estate — the
   demo is not an exception to this, it's automated: "Try the demo" mints a real session on a
@@ -116,7 +125,7 @@ forwards the session as a bearer token server-side, so there's no CORS surface t
 | **AI** | Anthropic Claude (parsing, agent reasoning, chat, letters) · OpenAI embeddings |
 | **Backend** | Python · FastAPI · Pydantic v2 · bcrypt · Resend (email) |
 | **Frontend** | Next.js 14 · TypeScript · Zod · Deepgram (voice) · Sentry |
-| **Data** | Redis (KV + Redis 8 Vector Sets), Upstash, or in-memory — pluggable |
+| **Data** | Redis Cloud (KV + Redis 8 Vector Sets) in production — pluggable to Upstash or an in-memory store for local dev |
 | **Observability** | Arize Phoenix tracing + LLM-as-judge evals |
 
 ## Quick start
@@ -156,7 +165,10 @@ which document types the parser recognizes today.
 ## Deploying your own
 
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Render for the agent (a `render.yaml`
-blueprint is included), Vercel for the frontend, one required env var on each side.
+blueprint is included, defaulting to `STORE_BACKEND=redis_cloud` so real accounts persist
+past a free-tier restart, not the in-memory backend), Vercel for the frontend. Required env
+vars: `ANTHROPIC_API_KEY` + `REDIS_URL` on the agent side, `AGENT_API_URL` on the frontend
+side.
 
 ## Project structure
 

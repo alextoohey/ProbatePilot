@@ -49,6 +49,13 @@ specifically:
   does — a vector-store failure leaves the document saved but not searchable via chat,
   logged and traced (`embed_failed` span attribute), instead of failing the whole upload.
 
+## Known follow-up: whole-blob strings → RedisJSON
+
+Estates are stored as one JSON string per estate (`estate:{id}` → full `EstateState`,
+`GET`/`SET` on the whole thing), not using Redis 8's native RedisJSON path operations —
+already available as a loaded module on the Redis Cloud instance this app runs on. Fully
+scoped, not built: see [`docs/REDIS_DATA_MODEL_MIGRATION.md`](REDIS_DATA_MODEL_MIGRATION.md).
+
 ## Never commit a real `REDIS_URL`
 
 This connection string grants full read/write access to every estate in that database —
