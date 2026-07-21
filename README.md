@@ -108,13 +108,13 @@ forwards the session as a bearer token server-side, so there's no CORS surface t
 
 ## Quick start
 
-Requires [uv](https://docs.astral.sh/uv/) and Node 18.18+.
+Requires [uv](https://docs.astral.sh/uv/) (manages the Python 3.11+ interpreter itself, no
+separate install needed) and Node 18.18+ (`web/.nvmrc` pins 20 if you use nvm).
 
 ```bash
 make env       # copy .env examples (won't overwrite existing files)
-make install   # uv sync for agent/, npm install for web/
+make install   # uv sync for agent/ (agent/uv.lock), npm install for web/ (web/package-lock.json)
 make dev       # agent on :8000, web on :3000
-make seed      # in a separate terminal: seed the demo estate
 ```
 
 The only required key is `ANTHROPIC_API_KEY` in `agent/.env` — everything else (Redis,
