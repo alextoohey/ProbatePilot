@@ -266,6 +266,22 @@ you want to verify immediately rather than wait for the next real push.
 
 ## Notes
 
+- **Redis Cloud free-tier inactivity reclaim**: per Redis Cloud's own SLA/AUP, a
+  Free/Evaluation database is deleted after **14 consecutive days with no read or write
+  commands** — logging into the console or viewing metrics doesn't count as activity, and
+  email warnings before deletion aren't guaranteed to arrive. A portfolio deploy with
+  sporadic visitor traffic can easily go 14 days idle. Mitigated with a Cloud Scheduler job
+  (`probatepilot-redis-keepalive`, weekly, `POST /seed`) that guarantees a real write at
+  least once a week regardless of visitor traffic:
+  ```bash
+  gcloud scheduler jobs create http probatepilot-redis-keepalive \
+    --location=us-west1 --schedule="0 9 * * 1" \
+    --uri="https://<your-agent>.run.app/seed" --http-method=POST \
+    --time-zone="America/Los_Angeles"
+  ```
+  `/seed` also runs a real DeadlineAgent Claude call each time (not just a Redis touch), so
+  this is a small real recurring cost (~$0.01-0.07/week based on this app's own measured
+  DeadlineAgent trace costs), not a free no-op.
 - **Cold starts**: both paths scale to zero when idle, so the first request after a quiet
   period always pays a startup cost — the question is how much. Measured directly against
   this app's real deployed Cloud Run service: **13.99s** after 12 minutes idle

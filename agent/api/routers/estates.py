@@ -19,7 +19,12 @@ router = APIRouter(tags=["estates"])
 async def seed() -> dict[str, object]:
     """Reset the public demo estate to its known-good seed state. Always
     operates on the demo estate only — there is no way to pass an arbitrary
-    estate id, so this can safely stay unauthenticated."""
+    estate id, so this can safely stay unauthenticated. Also the target of a
+    weekly Cloud Scheduler ping (see docs/DEPLOYMENT.md) that keeps the Redis
+    Cloud free-tier database from being reclaimed after 14 days of
+    inactivity — this real write resets that timer. Runs a real DeadlineAgent
+    Claude call each time, so it's a small real cost (~$0.01-0.07/run), not
+    a free no-op keep-alive."""
     estate = seed_demo_estate()
     alerts = await run_deadline_agent(estate.id)
     return {"estate": get_estate_state(estate.id), "alerts": alerts}
