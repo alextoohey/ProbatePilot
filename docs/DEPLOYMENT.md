@@ -29,7 +29,9 @@ without changes.
 The default `STORE_BACKEND=memory` means estate data lives in the container's
 memory and resets on restart — fine for a demo. For persistence, provision a
 [Redis Cloud](https://redis.io/cloud/) instance (Redis 8, for its Vector Sets
-support) and set `STORE_BACKEND=redis_cloud` + `REDIS_URL=rediss://...`.
+support) and set `STORE_BACKEND=redis_cloud` + `REDIS_URL=rediss://...`. Never
+put a real value in a committed file — see
+[`docs/database.md`](database.md#never-commit-a-real-redis_url) for why.
 
 ## 2. Deploy the frontend (Vercel)
 

@@ -4,6 +4,7 @@ and batch-upload routes."""
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -15,11 +16,13 @@ from documents.pdf_reader import extract_text
 from documents.router import parse_document_text_with_type as parse_document_text
 from llm.claude import DocumentParseError
 from llm.embeddings import embed_texts
-from observability.phoenix import set_span_attribute, span
+from observability.phoenix import set_span_attribute, set_span_error, span
 from schemas.api import AnyDocumentExtraction, ParseDocumentFailure, ParseDocumentResponse
 from schemas.documents import BankStatementExtraction, DeedExtraction, WillExtraction
 from schemas.estate import Alert, UploadedDocument
 from store.redis_client import add_document, set_document_file, upsert_vectors
+
+LOGGER = logging.getLogger(__name__)
 
 ACCEPTED_CONTENT_TYPES = {
     "application/pdf",
@@ -188,8 +191,35 @@ def store_parsed_upload(estate_id: str, parsed: ParsedUpload, *, embed_chunks: b
 
     chunks = parsed.extraction.rawChunks
     if embed_chunks and chunks:
-        embeddings = embed_texts(chunks)
-        upsert_vectors(estate_id, chunks, embeddings, source=parsed.filename, document_type=parsed.resolved_type)
+        _embed_and_store_one(estate_id, chunks, source=parsed.filename, document_type=parsed.resolved_type)
+
+
+def _embed_and_store_one(estate_id: str, chunks: list[str], *, source: str, document_type: str) -> None:
+    """The document's metadata and file bytes are already saved by the time this
+    runs. A vector-store failure here — e.g. REDIS_URL pointed at a Redis
+    without Vector Sets support (VADD/VSIM/VDIM need Redis 8+) — must not take
+    down the whole upload; the document just isn't searchable via chat until
+    the store issue is fixed. Mirrors the same try/except chat.py already
+    does around its own semantic_search call."""
+    with span(
+        "documents.embed_chunks",
+        estate_id=estate_id,
+        action_type="document_parse",
+        upload_filename=source,
+        chunk_count=len(chunks),
+    ) as current_span:
+        try:
+            embeddings = embed_texts(chunks)
+            upsert_vectors(estate_id, chunks, embeddings, source=source, document_type=document_type)
+            set_span_attribute(current_span, "embed_failed", False)
+        except Exception as exc:
+            set_span_error(current_span, exc)
+            set_span_attribute(current_span, "embed_failed", True)
+            LOGGER.exception(
+                "Vector store failed for %s on estate %s; document saved but not searchable via chat.",
+                source,
+                estate_id,
+            )
 
 
 def embed_stored_uploads(estate_id: str, parsed_uploads: list[ParsedUpload]) -> None:
@@ -202,18 +232,49 @@ def embed_stored_uploads(estate_id: str, parsed_uploads: list[ParsedUpload]) -> 
     if not all_chunks:
         return
 
-    embeddings = embed_texts(all_chunks)
-    offset = 0
-    for parsed, chunks in chunk_records:
-        next_offset = offset + len(chunks)
-        upsert_vectors(
-            estate_id,
-            chunks,
-            embeddings[offset:next_offset],
-            source=parsed.filename,
-            document_type=parsed.resolved_type,
-        )
-        offset = next_offset
+    with span(
+        "documents.embed_stored_uploads",
+        estate_id=estate_id,
+        action_type="document_parse",
+        chunk_count=len(all_chunks),
+        file_count=len(chunk_records),
+    ) as current_span:
+        try:
+            embeddings = embed_texts(all_chunks)
+        except Exception as exc:
+            set_span_error(current_span, exc)
+            set_span_attribute(current_span, "embed_failed", True)
+            LOGGER.exception(
+                "Embedding failed for estate %s; %d document(s) saved but not searchable via chat.",
+                estate_id,
+                len(chunk_records),
+            )
+            return
+
+        offset = 0
+        failed_sources: list[str] = []
+        for parsed, chunks in chunk_records:
+            next_offset = offset + len(chunks)
+            try:
+                upsert_vectors(
+                    estate_id,
+                    chunks,
+                    embeddings[offset:next_offset],
+                    source=parsed.filename,
+                    document_type=parsed.resolved_type,
+                )
+            except Exception as exc:
+                failed_sources.append(parsed.filename)
+                set_span_error(current_span, exc)
+                LOGGER.exception(
+                    "Vector store failed for %s on estate %s; document saved but not searchable via chat.",
+                    parsed.filename,
+                    estate_id,
+                )
+            offset = next_offset
+        set_span_attribute(current_span, "embed_failed", bool(failed_sources))
+        if failed_sources:
+            set_span_attribute(current_span, "failed_sources", ", ".join(failed_sources))
 
 
 def parse_response_from_upload(

@@ -23,6 +23,41 @@ plus a separate vector-search implementation per backend, since Upstash's REST i
 Redis 8's `VADD`/`VSIM` commands don't share a common shape. Nothing outside `store/` should
 import from `store/backends/` directly.
 
+## What memory mode actually gives up
+
+`STORE_BACKEND=memory` is a real, fully-working implementation, not a stub — every feature
+works identically to the Redis-backed path, including semantic search (a brute-force
+cosine-similarity scan; see `store/backends/memory_vectors.py`). The only thing it doesn't do
+is survive the server process restarting: data lives in that process's RAM, so a crash, a
+redeploy, or a host that spins down when idle (e.g. Render's free tier) wipes everything —
+every account, every uploaded document, every estate. Fine for local dev in one sitting or a
+quick clone-and-try; not fine for anything meant to hold real users' data reliably.
+
+## Redis version requirement and what happens without it
+
+Vector Sets (`VADD` / `VSIM` / `VDIM`) require **Redis 8+**. Pointing `REDIS_URL` at an
+older or otherwise incompatible Redis doesn't break KV storage (estate state, accounts,
+documents all still read/write fine with plain `GET`/`SET`) — it breaks semantic search
+specifically:
+
+- **Chat retrieval** already handles this: `api/routers/chat.py` wraps the vector search
+  call in a try/except, so an unsupported-command error just disables retrieval for that
+  message; chat continues without it.
+- **Document upload** used to hard-fail with a 500 on the same error, even though the
+  document's metadata and file bytes had already been saved successfully one line earlier.
+  Fixed: `documents/upload_pipeline.py` now wraps the embed/upsert call the same way chat
+  does — a vector-store failure leaves the document saved but not searchable via chat,
+  logged and traced (`embed_failed` span attribute), instead of failing the whole upload.
+
+## Never commit a real `REDIS_URL`
+
+This connection string grants full read/write access to every estate in that database —
+including uploaded documents' actual file bytes, which `set_document_file()` stores as
+base64 blobs directly in Redis, not just metadata. A leaked credential means anyone can read
+real users' actual uploaded documents (wills, bank statements, whatever they uploaded), not
+just synthetic demo data. Keep it only in the local, gitignored `agent/.env` — never in
+`.env.example` or anywhere else that gets committed.
+
 ## Keys
 
 | Data | Key / Index | Shape |

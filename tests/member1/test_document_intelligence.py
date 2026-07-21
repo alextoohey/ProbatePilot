@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from documents.router import detect_document_type, parse_document_text
 from llm.claude import DocumentParseError
 from llm.embeddings import VECTOR_SIZE, embed_query, embed_texts
-from schemas.documents import (
-    BankStatementExtraction,
-    DeedExtraction,
-    UnknownDocumentExtraction,
-    WillExtraction,
-)
+from schemas.documents import DeedExtraction, UnknownDocumentExtraction
 from store.redis_client import get_estate_state, semantic_search
 
 
@@ -116,3 +111,38 @@ def test_parse_document_endpoint_embeds_adds_document_and_returns_alerts(monkeyp
     assert matches[0].estateId == "demo-milligan"
     assert matches[0].source == "deed.txt"
     assert matches[0].documentType == "deed"
+
+
+def test_upload_survives_a_vector_store_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Redis pointed at without Vector Sets support (VADD/VSIM/VDIM need
+    Redis 8+) would previously take down the whole upload with a 500, even
+    though the document's metadata and file bytes were already saved."""
+    import main
+    from api.routers import documents
+    from documents import upload_pipeline
+
+    def fake_deadline_agent(estate_id: str):
+        return []
+
+    def fake_upsert_vectors(*args, **kwargs):
+        raise RuntimeError("ERR unknown command 'VADD'")
+
+    monkeypatch.setattr(documents, "refresh_deadline_state", fake_deadline_agent)
+    monkeypatch.setattr(upload_pipeline, "upsert_vectors", fake_upsert_vectors)
+    client = TestClient(main.app)
+
+    response = client.post(
+        "/parse-document",
+        data={"estateId": "demo-milligan"},
+        files={
+            "file": (
+                "deed2.txt",
+                b"Grant Deed for 1847 Marin Ave. APN 123-456. Legal description attached.",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    estate = get_estate_state("demo-milligan")
+    assert any(document.fileName == "deed2.txt" for document in estate.documents)
