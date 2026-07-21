@@ -121,6 +121,12 @@ make test      # Python + TypeScript contract tests
 make lint      # ruff (agent/) + ESLint (web/)
 ```
 
+**Trying it out**: click "Try the demo" for the fastest path — no signup, seeded estate,
+alerts already firing. To see the document-intelligence pipeline itself run end to end,
+register a real account instead and upload a few files from
+[`examples/`](examples/README.md) — it includes a numbered happy-path order and a note on
+which document types the parser recognizes today.
+
 ## Deploying your own
 
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Render for the agent (a `render.yaml`

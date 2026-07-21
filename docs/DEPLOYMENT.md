@@ -63,6 +63,19 @@ The live app is empty until the demo estate exists. Either:
   except the seeded demo estate, which stays world-readable so the "Try the
   demo" flow works without registration. See `agent/api/deps.py`.
 
+## Known follow-up: Next.js / Sentry major version upgrade
+
+`npm audit` currently reports advisories against `next` (`^14.2.0`) and
+`@sentry/nextjs` (`^8.30.0`) — both packages are already pinned to the newest
+release in their installed major version (`next@14.2.35`, `@sentry/nextjs@8.55.2`),
+so there's no drop-in patch available; clearing these requires a major-version
+upgrade (`next` 14→16, `@sentry/nextjs` 8→10) with real breaking-change review
+(App Router changes, Sentry config API changes), not a one-command fix. Several
+of the `next` advisories are specifically about self-hosted production behavior
+(request smuggling in rewrites, SSRF via WebSocket upgrades, cache poisoning),
+so this is worth doing as a dedicated, tested piece of work before this app
+handles real traffic — not folded into an unrelated change.
+
 ## Known follow-up: Email delivery
 
 The email pipeline (`agent/notify/email.py`) is fully built and tested — real Resend

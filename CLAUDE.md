@@ -125,14 +125,15 @@ language for what it is best at; do not collapse everything into one stack.
 
 ### Python `agent/` (FastAPI)
 Every route below except `/health`, `/seed`, and `/auth/*` requires a session and estate
-ownership (`api/deps.py::ensure_estate_access`) — the one exception is the seeded demo
-estate (`demo-milligan`), which stays world-readable so the demo works without signing up.
+ownership (`api/deps.py::ensure_estate_access`) — the one standing exception is the
+canonical seeded estate (`demo-milligan`), which stays world-readable for `/seed`-based
+testing and curl access without a session.
 
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/health` | GET | Service status + Phoenix/instrumentor readiness |
 | `/auth/register` · `/auth/login` · `/auth/logout` | POST | Account + cookie session |
-| `/auth/demo` | POST | Guest session scoped to the seeded demo estate, no registration |
+| `/auth/demo` | POST | Guest session on its own throwaway copy of the seed estate — every call mints an independent `demo-{uuid}` estate + user (`DEMO_VISITOR_TTL_SECONDS`, self-expiring), so one visitor's edits never show up for another |
 | `/auth/me` | GET | Current authenticated user |
 | `/estates` | POST | Create a real estate shell |
 | `/estate/{estate_id}` | GET | Fetch full estate state |
@@ -218,9 +219,19 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ---
 
 ## Demo Estate (Seed Data)
-Estate ID `demo-milligan` | Deceased: Robert A. Milligan | Date of death: 2026-06-03 |
-Appointment: 2026-06-10 | Executor: Dana Milligan. The canonical object lives in
-`agent/seed/demo_estate.py` (`build_demo_estate()`); `POST /seed` resets it.
+Deceased: Robert A. Milligan | Date of death: 2026-06-03 | Appointment: 2026-06-10 |
+Executor: Dana Milligan. The canonical content lives in `agent/seed/demo_estate.py`
+(`build_demo_estate()`), keyed at the fixed id `demo-milligan` — `POST /seed` resets that
+one canonical copy for testing.
+
+Real visitors never land on that fixed id. Each `POST /auth/demo` call
+(`build_demo_estate_for_visitor()`) copies the same seed content into a fresh,
+independent `demo-{uuid}` estate plus a throwaway user, self-expiring after
+`DEMO_VISITOR_TTL_SECONDS` (`agent/constants.py`) — so one visitor's edits (completed
+tasks, uploads) never show up for another, and abandoned sessions clean themselves up
+without a cron job. `refresh_deadline_state()` (deterministic rules only, no Claude call)
+runs once at login so the dashboard is populated immediately rather than blocking ~30-45s
+on the full Claude-enhanced `run_deadline_agent()`.
 
 Designed to fire live during the demo (exact day counts depend on the run date):
 1. **CRITICAL** — Creditors not yet notified; the 30-day certified-mail window from the

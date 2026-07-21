@@ -187,8 +187,11 @@ RULES YOU MUST FOLLOW:
 
 ## Demo Scenario
 
-`POST /seed` (or the "Try the demo" button) resets a fictional estate to a known-good state,
-canonically defined in `agent/seed/demo_estate.py`:
+`POST /seed` resets the canonical `demo-milligan` record (used for testing/curl access) to a
+known-good state. The "Try the demo" button is separate — each click copies this same seed
+content into a fresh, independent `demo-{uuid}` estate for that visitor only (see
+`CLAUDE.md#demo-estate-seed-data`), so visitors never share or reset each other's progress.
+The canonical seed content, defined in `agent/seed/demo_estate.py`:
 
 ```
 demo-milligan
