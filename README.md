@@ -175,8 +175,8 @@ which document types the parser recognizes today.
 ## Deploying your own
 
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Google Cloud Run for the agent
-(recommended: free-tier cold starts in low single digits of seconds) or Render (simpler
-setup, a `render.yaml` blueprint is included, but ~30-60s free-tier cold starts), either
+(recommended: measured 14s cold start on the real deployed service, vs. Render's ~30-60s)
+or Render (simpler setup, a `render.yaml` blueprint is included), either
 way defaulting to `STORE_BACKEND=redis_cloud` so real accounts persist past a restart, not
 the in-memory backend; Vercel for the frontend. Required env vars: `ANTHROPIC_API_KEY` +
 `REDIS_URL` on the agent side, `AGENT_API_URL` on the frontend side.

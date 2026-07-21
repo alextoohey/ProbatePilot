@@ -10,9 +10,9 @@ what each key unlocks.
 
 ## 1. Deploy the agent
 
-Two documented paths. **Cloud Run is the recommended default** — cold starts on a
-scale-to-zero free service are typically low-single-digit seconds, versus Render free
-tier's ~30-60s (see the Notes section below for why that gap exists and matters for a
+Two documented paths. **Cloud Run is the recommended default** — measured against the real
+deployed service after 12 minutes idle: a **14s** cold start, versus Render free tier's
+~30-60s (see the Notes section below for the measurement and why the gap matters for a
 recruiter clicking a cold link). Render is documented as the simpler alternative if you'd
 rather not touch the `gcloud` CLI.
 
@@ -118,9 +118,14 @@ The live app is empty until the demo estate exists. Either:
 ## Notes
 
 - **Cold starts**: both paths scale to zero when idle, so the first request after a quiet
-  period always pays a startup cost — the question is how much. Cloud Run's free tier
-  typically wakes in low single-digit seconds; Render's free plan takes ~30-60s. Neither is
-  the app being slow, it's the platform starting a fresh container.
+  period always pays a startup cost — the question is how much. Measured directly against
+  this app's real deployed Cloud Run service: **13.99s** after 12 minutes idle
+  (`curl -w "%{time_total}"` against `/health`) — slower than Cloud Run's reputation for
+  "low single-digit seconds" for a bare-minimum container, likely because this is a real
+  Python/FastAPI/uvicorn image with a genuine dependency set, not a hello-world binary.
+  Render's free plan takes ~30-60s by comparison — still notably slower, so the choice
+  still stands, but 14s isn't nothing either; don't undersell it as near-instant. Neither
+  is the app being slow, it's the platform starting a fresh container.
 - **CORS**: the frontend never calls the agent directly from the browser —
   every request is proxied through Next.js API routes (`web/app/api/agent/[...path]`),
   which forward the session cookie as a Bearer token server-side. No CORS
