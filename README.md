@@ -87,6 +87,13 @@ forwards the session as a bearer token server-side, so there's no CORS surface t
   on real traces. Tracing is optional and degrades to a harmless connection warning with
   no collector running — see [`agent/README.md`](agent/README.md#phoenix-tracing) to spin
   one up locally and actually watch the traces.
+- **The DeadlineAgent's Claude calls use real prompt caching.** Its system prompt and tool
+  schemas (~1,066 tokens, reused across up to 5 tool-use rounds per run) carry an Anthropic
+  `cache_control` marker and measurably hit cache on repeat calls
+  (`cache_read_input_tokens=1066`, verified live against the API, not assumed). The chat
+  prompt is wired the same way but is currently under Anthropic's 1024-token cache-eligibility
+  floor, so it's a documented no-op today rather than an overclaimed win — see
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#system-prompt-chat).
 - **Two features are built but intentionally not exposed yet.** An email digest pipeline
   (Resend, human-toned templates, on-demand send) is fully working but gated behind a
   verified sending domain — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#known-follow-up-email-delivery).
