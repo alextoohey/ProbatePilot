@@ -32,6 +32,18 @@ const RECIPIENT_SOURCE: Record<string, "creditors" | "beneficiaries" | "bankAcco
   property_transfer: "properties",
 };
 
+// creditor_notice and beneficiary_update select an actual addressable party —
+// the dropdown value IS who the letter is "Dear ___," to. bank_notification and
+// property_transfer select an asset/account the letter is ABOUT, not a party you
+// address a letter to ("Dear 2019 Honda Civic:" isn't a sentence) — the backend
+// (agent/prompts/letters.py) already addresses these to a generic entity
+// (Financial Institution / Records Office) regardless of which one is picked, so
+// label the field for what it actually does instead of implying it's the addressee.
+const RECIPIENT_FIELD_LABEL: Record<string, string> = {
+  bank_notification: "Bank account",
+  property_transfer: "Property",
+};
+
 export function LettersScreen({ estate }: Props) {
   const estateId = estate?.id ?? "";
 
@@ -219,8 +231,8 @@ export function LettersScreen({ estate }: Props) {
                 </label>
               </>
             ) : recipientSource && recipientOptions.length > 0 ? (
-              <Select label="Recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)}
-                options={[{ value: "", label: "Choose a recipient…" }, ...recipientOptions.map((r) => ({ value: r, label: r }))]} />
+              <Select label={RECIPIENT_FIELD_LABEL[type] ?? "Recipient"} value={recipient} onChange={(e) => setRecipient(e.target.value)}
+                options={[{ value: "", label: `Choose a ${(RECIPIENT_FIELD_LABEL[type] ?? "recipient").toLowerCase()}…` }, ...recipientOptions.map((r) => ({ value: r, label: r }))]} />
             ) : null}
             <Button variant="primary" fullWidth onClick={generate} disabled={!canGenerate} leadingIcon={<I.Sparkle size={16} />}>
               {busy ? "Drafting…" : "Draft this letter"}

@@ -66,13 +66,35 @@ def test_letter_prompt_includes_estate_facts_and_letter_type() -> None:
 
     prompt = build_letter_prompt(estate, "bank_notification", "Wells Fargo")
 
-    assert "estate bank notification addressed specifically to: Wells Fargo" in prompt
+    # bank_notification is asset-sourced (the selection is an account description,
+    # not an addressable party) - the letter addresses the generic institution,
+    # not "Wells Fargo" literally, but still pulls the matching account into the
+    # letter's context. See ASSET_SOURCED_LETTER_TYPES in prompts/letters.py.
+    assert "estate bank notification addressed specifically to: Financial Institution" in prompt
+    assert "Wells Fargo" in prompt
     assert "Robert A. Milligan" in prompt
     assert "2026-06-03" in prompt
     assert "Dana Milligan" in prompt
     assert "dana@demo.com" in prompt
     assert "2026-06-10" in prompt
-    assert "Wells Fargo" in prompt
+
+
+def test_asset_sourced_letter_never_addressed_to_the_asset_itself() -> None:
+    """Regression test: selecting a vehicle/property as the "recipient" for a
+    property_transfer letter must never produce a salutation like "Dear 2019
+    Honda Civic LX Sedan:" - the letter addresses a generic records office,
+    using the vehicle only as context for which transfer this concerns."""
+    estate = build_demo_estate()
+    vehicle = next(a for a in estate.assets if a.type == "vehicle")
+
+    prompt = build_letter_prompt(estate, "property_transfer", vehicle.description)
+    assert f"addressed specifically to: {vehicle.description}" not in prompt
+    assert "addressed specifically to: Records Office" in prompt
+    assert vehicle.description in prompt  # still present as context
+
+    fallback = build_letter_fallback(estate, "property_transfer", vehicle.description)
+    assert f"Dear {vehicle.description}" not in fallback
+    assert "Dear Records Office" in fallback
 
 
 def test_generate_letter_route_uses_claude_helper_when_configured(monkeypatch) -> None:

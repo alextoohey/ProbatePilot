@@ -15,6 +15,15 @@ SUPPORTED_LETTER_TYPES = {
 DEFAULT_LETTER_TYPE = "creditor_notice"
 CUSTOM_LETTER_TYPE = "custom"
 
+# creditor_notice and beneficiary_update: the selected recipient IS an addressable
+# party (a creditor's name, a beneficiary's name) - safe to use directly as the
+# salutation. bank_notification and property_transfer: the selection is an asset
+# or account DESCRIPTION (e.g. "2019 Honda Civic LX Sedan, VIN ..."), not a party -
+# addressing a letter "Dear 2019 Honda Civic LX Sedan:" is nonsensical. For these,
+# the selection is still used to find the matching estate record for context, but
+# the actual addressee defaults to a generic entity name instead.
+ASSET_SOURCED_LETTER_TYPES = {"bank_notification", "property_transfer"}
+
 
 LETTER_TYPE_LABELS = {
     "creditor_notice": "California probate creditor notice",
@@ -100,9 +109,14 @@ Executor of the Estate of {estate.deceasedName}
 
 def build_letter_prompt(estate: EstateState, letter_type: str, recipient_name: str | None = None) -> str:
     selected_type = normalize_letter_type(letter_type)
-    recipient = recipient_name or _default_recipient(selected_type)
-    relevant_context = _relevant_context(estate, selected_type, recipient)
+    context_key = recipient_name or _default_recipient(selected_type)
+    relevant_context = _relevant_context(estate, selected_type, context_key)
     statute_context = _statute_context(selected_type)
+    # The asset/account description drives which estate record to pull into
+    # `relevant_context` above; the letter itself is still addressed to the
+    # generic entity, not to the asset/account by name (see
+    # ASSET_SOURCED_LETTER_TYPES for why).
+    recipient = _default_recipient(selected_type) if selected_type in ASSET_SOURCED_LETTER_TYPES else context_key
 
     county_line = f", County of {estate.county}" if estate.county else ""
     return f"""Draft a sign-ready {LETTER_TYPE_LABELS[selected_type]} addressed specifically to: {recipient}
@@ -137,7 +151,10 @@ Drafting rules:
 
 def build_letter_fallback(estate: EstateState, letter_type: str, recipient_name: str | None = None) -> str:
     selected_type = normalize_letter_type(letter_type)
-    recipient = recipient_name or _default_recipient(selected_type)
+    context_key = recipient_name or _default_recipient(selected_type)
+    # Same reasoning as build_letter_prompt: never address the letter to the raw
+    # asset/account description itself.
+    recipient = _default_recipient(selected_type) if selected_type in ASSET_SOURCED_LETTER_TYPES else context_key
     if selected_type == "creditor_notice":
         return _creditor_notice_fallback(estate, recipient)
     if selected_type == "bank_notification":
